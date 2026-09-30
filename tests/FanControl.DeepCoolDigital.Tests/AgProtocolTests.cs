@@ -39,7 +39,7 @@ namespace FanControl.DeepCoolDigital.Tests
         [Test]
         public void BuildPacket_Temperature42_ProducesGoldenBytes()
         {
-            byte[] packet = _protocol.BuildPacket(DisplayField.Temperature, 42f, false);
+            byte[] packet = _protocol.BuildPacket(Frame(DisplayField.Temperature, 42f));
 
             var expected = new byte[64];
             expected[0] = 0x10;
@@ -53,7 +53,7 @@ namespace FanControl.DeepCoolDigital.Tests
         [Test]
         public void BuildPacket_Usage37_ProducesGoldenBytes()
         {
-            byte[] packet = _protocol.BuildPacket(DisplayField.Usage, 37f, false);
+            byte[] packet = _protocol.BuildPacket(Frame(DisplayField.Usage, 37f));
 
             var expected = new byte[64];
             expected[0] = 0x10;
@@ -77,7 +77,7 @@ namespace FanControl.DeepCoolDigital.Tests
         [TestCase(1e9f, 9, 9)]
         public void BuildPacket_TemperatureDigits_AreClamped(float value, byte expectedTens, byte expectedOnes)
         {
-            byte[] packet = _protocol.BuildPacket(DisplayField.Temperature, value, false);
+            byte[] packet = _protocol.BuildPacket(Frame(DisplayField.Temperature, value));
 
             Assert.That(packet[3], Is.EqualTo(expectedTens));
             Assert.That(packet[4], Is.EqualTo(expectedOnes));
@@ -87,7 +87,7 @@ namespace FanControl.DeepCoolDigital.Tests
         [TestCase(1000f, 9, 9)]
         public void BuildPacket_UsageDigits_AreClamped(float value, byte expectedTens, byte expectedOnes)
         {
-            byte[] packet = _protocol.BuildPacket(DisplayField.Usage, value, false);
+            byte[] packet = _protocol.BuildPacket(Frame(DisplayField.Usage, value));
 
             Assert.That(packet[3], Is.EqualTo(expectedTens));
             Assert.That(packet[4], Is.EqualTo(expectedOnes));
@@ -97,7 +97,7 @@ namespace FanControl.DeepCoolDigital.Tests
         [TestCase(false, 0)]
         public void BuildPacket_AlarmFlag_IsWrittenToByte5(bool alarm, byte expected)
         {
-            byte[] packet = _protocol.BuildPacket(DisplayField.Temperature, 42f, alarm);
+            byte[] packet = _protocol.BuildPacket(Frame(DisplayField.Temperature, 42f, alarm));
 
             Assert.That(packet[5], Is.EqualTo(expected));
         }
@@ -105,7 +105,7 @@ namespace FanControl.DeepCoolDigital.Tests
         [Test]
         public void BuildPacket_UsageWithAlarm_StillCarriesAlert()
         {
-            byte[] packet = _protocol.BuildPacket(DisplayField.Usage, 37f, true);
+            byte[] packet = _protocol.BuildPacket(Frame(DisplayField.Usage, 37f, alarm: true));
 
             Assert.That(packet[5], Is.EqualTo(1));
         }
@@ -113,10 +113,30 @@ namespace FanControl.DeepCoolDigital.Tests
         [Test]
         public void BuildPacket_TemperatureFloat_IsTruncated()
         {
-            byte[] packet = _protocol.BuildPacket(DisplayField.Temperature, 42.9f, false);
+            byte[] packet = _protocol.BuildPacket(Frame(DisplayField.Temperature, 42.9f));
 
             Assert.That(packet[3], Is.EqualTo(4));
             Assert.That(packet[4], Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ApplyTransportQuirks_ReturnsPacketUnchanged()
+        {
+            byte[] packet = _protocol.BuildPacket(Frame(DisplayField.Temperature, 42f));
+
+            byte[] result = _protocol.ApplyTransportQuirks(packet, "AG-DIGITAL");
+
+            Assert.That(result, Is.SameAs(packet));
+        }
+
+        private static DisplayFrame Frame(DisplayField field, float value, bool alarm = false)
+        {
+            return new DisplayFrame(
+                field,
+                value,
+                field == DisplayField.Temperature ? value : 0f,
+                field == DisplayField.Usage ? value : 0f,
+                alarm);
         }
     }
 }

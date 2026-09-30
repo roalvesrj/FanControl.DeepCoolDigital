@@ -8,7 +8,7 @@ namespace FanControl.DeepCoolDigital.Core
     /// </summary>
     public sealed class DeviceDefinition
     {
-        private readonly Func<IDisplayProtocol> _createProtocol;
+        private readonly Func<DeviceOptions, IDisplayProtocol> _createProtocol;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DeviceDefinition"/> class.
@@ -24,7 +24,7 @@ namespace FanControl.DeepCoolDigital.Core
             int productId,
             string model,
             DeviceCapabilities capabilities,
-            Func<IDisplayProtocol> createProtocol)
+            Func<DeviceOptions, IDisplayProtocol> createProtocol)
         {
             Model = model ?? throw new ArgumentNullException(nameof(model));
             Capabilities = capabilities ?? throw new ArgumentNullException(nameof(capabilities));
@@ -60,10 +60,17 @@ namespace FanControl.DeepCoolDigital.Core
         /// <summary>
         /// Creates a fresh protocol instance for a connection.
         /// </summary>
+        /// <param name="options">The per-device behavior options, such as the temperature unit.</param>
         /// <returns>A new <see cref="IDisplayProtocol"/> for the device.</returns>
-        public IDisplayProtocol CreateProtocol()
+        /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null" />.</exception>
+        public IDisplayProtocol CreateProtocol(DeviceOptions options)
         {
-            return _createProtocol();
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
+
+            return _createProtocol(options);
         }
     }
 }

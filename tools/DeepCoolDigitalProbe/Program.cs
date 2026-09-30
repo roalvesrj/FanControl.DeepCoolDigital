@@ -98,12 +98,19 @@ namespace DeepCoolDigitalProbe
 
             using (stream)
             {
-                IDisplayProtocol protocol = definition.CreateProtocol();
-                byte[] packet = protocol.BuildPacket(field, value, false);
+                string productName = device.GetProductName();
+                IDisplayProtocol protocol = definition.CreateProtocol(new DeviceOptions(false));
+                var frame = new DisplayFrame(
+                    field,
+                    value,
+                    field == DisplayField.Temperature ? value : 0f,
+                    field == DisplayField.Usage ? value : 0f,
+                    alarm: false);
+                byte[] packet = protocol.ApplyTransportQuirks(protocol.BuildPacket(frame), productName);
 
                 foreach (byte[] initPacket in protocol.CreateInitializationPackets())
                 {
-                    stream.Write(initPacket);
+                    stream.Write(protocol.ApplyTransportQuirks(initPacket, productName));
                 }
 
                 Console.WriteLine($"Sending {label}={Math.Max(0, (int)value)} every {interval}ms for {seconds}s...");

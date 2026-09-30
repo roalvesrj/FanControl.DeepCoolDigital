@@ -33,8 +33,10 @@ The display can be configured to show:
 - CPU temperature read through **LibreHardwareMonitor** — the same sensor backend FanControl already ships. No second monitoring tool (HWInfo etc.), no extra driver, no extra service.
 - CPU usage sampled straight from the Windows kernel (`GetSystemTimes`).
 - Registers a **`DeepCool Display CPU Temp`** sensor inside FanControl, usable in any fan curve.
-- High-temperature alert on the cooler, matching DeepCool Hub ("exceeds 90 °C" by default).
-- Values above 99 are clamped to 99, exactly like DeepCool Hub does.
+- **Multiple displays at once**: every supported DeepCool DIGITAL cooler found on the system is driven independently, with optional per-device settings.
+- High-temperature alert on the cooler, matching DeepCool Hub ("exceeds 90 °C" by default), toggleable per device.
+- Values beyond what a display can render are clamped to all-nines (e.g. `99` on the AG), exactly like DeepCool Hub does.
+- Fahrenheit support on device families that accept it (e.g. the AK series).
 - **Hot-reload configuration**: edit the ini file and the change is applied in about a second — no FanControl restart.
 - Automatic reconnect: keeps retrying every 5 seconds when the display is missing or busy (re-plug, sleep/resume, USB reset, DeepCool Hub started by accident).
 - A tiny CLI probe (`DeepCoolDigitalProbe`) that talks to the display without FanControl — useful for testing and for adding support to new devices.
@@ -45,10 +47,16 @@ The display can be configured to show:
 | Device | Status |
 | ------ | ------ |
 | DeepCool AG620 DIGITAL | ✅ tested — VID `0x3633`, PID `0x0008`, HID name `AG-DIGITAL` |
-| Other AG / AK DIGITAL coolers sharing PID `0x0008` (AG300/AG400/AG500/AG620, AK400/AK500/AK620 families) | ⚠️ expected to work (same packet format), untested — feedback welcome |
-| Other DeepCool DIGITAL models (PRO, NYX, AIO LCD…) | ❌ different packet formats; not supported |
+| DeepCool AG300 / AG400 / AG500 DIGITAL | ⚠️ same protocol as the tested AG620 (PID `0x0008`), untested — feedback welcome |
+| DeepCool AK400 DIGITAL (PID `0x0001`) | 🧪 protocol implemented, tests green — awaiting a tester with the hardware |
+| DeepCool AK620 DIGITAL (PID `0x0002`) | 🧪 protocol implemented, tests green — awaiting a tester with the hardware |
+| DeepCool AK500 DIGITAL (PID `0x0003`) | 🧪 protocol implemented, tests green — awaiting a tester with the hardware |
+| DeepCool AK500S DIGITAL (PID `0x0004`) | 🧪 protocol implemented, tests green — awaiting a tester with the hardware |
+| Other DeepCool DIGITAL models (LS, LD, LQ, PRO, NYX, CH, LP, AIO LCD…) | ❌ different packet formats; support is planned in stages |
 
-The USB ids are configurable (`vendorId` / `productId` in the ini), so other models can be tried without rebuilding. Run `DeepCoolDigitalProbe list` to see what your machine reports.
+Legend: ✅ validated on real hardware by the maintainers • 🧪 code-complete with unit tests, awaiting hardware validation • ⚠️ expected to work, untested.
+
+Run `DeepCoolDigitalProbe list` to see what your machine reports; device reports (model + PID + log) are welcome in the issue tracker.
 
 ## Requirements
 
@@ -80,18 +88,36 @@ All settings live in `DeepCoolDigital.ini`, next to the plugin dll (`Plugins\Dee
 | `mode` | `temp` | `temp` = CPU temperature only • `usage` = CPU usage only • `dynamic` = alternate between both every `autoSwitchSeconds` (also accepts `temperature`, `load`, `both`, `auto`) |
 | `autoSwitchSeconds` | `5` | Seconds between temperature and usage when `mode=dynamic` |
 | `alarmTemperature` | `90` | The cooler's high-temperature alert is triggered when the temperature **exceeds** this value (°C) |
-| `vendorId` | `0x3633` | USB vendor id |
-| `productId` | `0x0008` | USB product id |
+| `alarmEnabled` | `true` | Enables the high-temperature alert (DeepCool Hub "Warning Control") |
+| `fahrenheit` | `false` | Shows temperatures in °F on devices that support it (e.g. the AK series); ignored elsewhere |
+| `vendorId` | `0x3633` | USB vendor id of the primary display target |
+| `productId` | `0x0008` | USB product id of the primary display target |
 | `logLevel` | `off` | Log verbosity: `off`, `events` (connections, config reloads, errors) or `verbose` (adds diagnostic details such as discovered sensors). The legacy `log=true` maps to `events` |
 | `preferredTempSensors` | (built-in list) | `\|`-separated CPU temperature sensor names, in priority order (e.g. `CPU Package\|Core (Tctl/Tdie)`) |
 
-The file is re-read automatically: save it and the display changes within ~1 second, no restart needed.
+The file is re-read automatically: save it and the display changes within ~1 second, no restart needed (changing `vendorId`/`productId` requires a restart).
 
 Example:
 
 ```ini
 mode=dynamic
 autoSwitchSeconds=10
+```
+
+### Per-device overrides
+
+With more than one display, or to pin different settings per cooler, add `[device:VID:PID]` sections. Keys inside a section override the global value for that USB identity only:
+
+```ini
+mode=temp
+alarmEnabled=true
+
+[device:0x3633:0x0008]      # AG620 DIGITAL
+mode=dynamic
+
+[device:0x3633:0x0002]      # AK620 DIGITAL
+mode=usage
+alarmTemperature=85
 ```
 
 ### Modes vs DeepCool Hub
