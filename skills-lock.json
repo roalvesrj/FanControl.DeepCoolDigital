@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "csharp-docs": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/csharp-docs/SKILL.md",
+      "computedHash": "93da3063bb770f13feec581efa3ff232c69a5a94b75cddfc4ad6e82909835cfe"
+    },
+    "csharp-nunit": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/csharp-nunit/SKILL.md",
+      "computedHash": "2026047ba0a3b1f3b7d68fd87d35a55ed8592c075979c14a3fcf2fa8c8b9fc3a"
+    },
+    "dotnet-best-practices": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/dotnet-best-practices/SKILL.md",
+      "computedHash": "9ef94db7f06c167d544369817e5a4415eeb7886dcff0d47026837a1aada260e3"
+    }
+  }
+}

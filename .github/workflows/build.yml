@@ -1,17 +1,42 @@
-name: build
+name: ci
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-test:
+    name: Build and test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore FanControl.DeepCoolDigital.sln
+
       - name: Build
-        run: dotnet build FanControl.DeepCoolDigital.sln -c Release
+        run: dotnet build FanControl.DeepCoolDigital.sln -c Release --no-restore
+
+      - name: Test
+        run: dotnet test tests/FanControl.DeepCoolDigital.Tests/FanControl.DeepCoolDigital.Tests.csproj -c Release --no-build
+
+      - name: Upload plugin artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: FanControl.DeepCoolDigital
+          path: |
+            src/FanControl.DeepCoolDigital/bin/Release/FanControl.DeepCoolDigital.dll
+            src/FanControl.DeepCoolDigital/bin/Release/FanControl.DeepCoolDigital.Core.dll
+            src/FanControl.DeepCoolDigital/bin/Release/DeepCoolDigital.ini

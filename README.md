@@ -61,10 +61,13 @@ The USB ids are configurable (`vendorId` / `productId` in the ini), so other mod
 ## Installation
 
 1. Close FanControl.
-2. Copy **both** files below into the `Plugins` folder of your FanControl installation (e.g. `C:\Program Files (x86)\FanControl\Plugins\`):
+2. Copy **all three** files below into the `Plugins` folder of your FanControl installation (e.g. `C:\Program Files (x86)\FanControl\Plugins\`):
    - `FanControl.DeepCoolDigital.dll`
+   - `FanControl.DeepCoolDigital.Core.dll`
    - `DeepCoolDigital.ini`
 3. Start FanControl.
+
+> **Note:** the v0.1.0 release assets predate the testable-core split and contain only two files. Releases from v0.2.0 on ship all three — or [build from source](#building-from-source).
 
 The `DeepCool Display CPU Temp` sensor appears in the temperature list and the cooler display starts showing the configured mode. No installer and no other files: `HidSharp` and `LibreHardwareMonitor` are loaded from FanControl's own folder.
 
@@ -79,7 +82,8 @@ All settings live in `DeepCoolDigital.ini`, next to the plugin dll (`Plugins\Dee
 | `alarmTemperature` | `90` | The cooler's high-temperature alert is triggered when the temperature **exceeds** this value (°C) |
 | `vendorId` | `0x3633` | USB vendor id |
 | `productId` | `0x0008` | USB product id |
-| `log` | `false` | Write `DeepCoolDigital.log` (connection events, config reloads, errors) next to the plugin dll |
+| `logLevel` | `off` | Log verbosity: `off`, `events` (connections, config reloads, errors) or `verbose` (adds diagnostic details such as discovered sensors). The legacy `log=true` maps to `events` |
+| `preferredTempSensors` | (built-in list) | `\|`-separated CPU temperature sensor names, in priority order (e.g. `CPU Package\|Core (Tctl/Tdie)`) |
 
 The file is re-read automatically: save it and the display changes within ~1 second, no restart needed.
 
@@ -183,7 +187,7 @@ cd FanControl.DeepCoolDigital
 dotnet build -c Release
 ```
 
-Plugin output: `src\FanControl.DeepCoolDigital\bin\Release\FanControl.DeepCoolDigital.dll` (+ `DeepCoolDigital.ini`).
+Plugin output: `src\FanControl.DeepCoolDigital\bin\Release\FanControl.DeepCoolDigital.dll` + `FanControl.DeepCoolDigital.Core.dll` + `DeepCoolDigital.ini`. Run the tests with `dotnet test`.
 
 The `lib\` folder contains the **unmodified reference assemblies** shipped with the FanControl V281 release archive (`FanControl.Plugins.dll`, `HidSharp.dll`, `LibreHardwareMonitorLib.dll` + XML docs). They are used only for compilation; at runtime the plugin binds to FanControl's own copies, and nothing from `lib\` is redistributed in the plugin output.
 
@@ -191,16 +195,22 @@ The `lib\` folder contains the **unmodified reference assemblies** shipped with 
 
 ```text
 FanControl.DeepCoolDigital.sln
-lib/                                  reference assemblies from the FanControl release
-src/FanControl.DeepCoolDigital/       the plugin
-  DeepCoolDigitalPlugin.cs            IPlugin2 entry point + update loop
-  DeepCoolDisplayDevice.cs            HID connect/send + reconnect logic
-  DeepCoolDisplaySensor.cs            "DeepCool Display CPU Temp" sensor
-  CpuTemperatureSource.cs             LibreHardwareMonitor wrapper
-  CpuUsage.cs                         GetSystemTimes sampler
-  PluginConfig.cs                     ini parsing + hot reload
-  Log.cs                              optional file log
-tools/DeepCoolDigitalProbe/           standalone HID test CLI
+lib/                                      reference assemblies from the FanControl release
+src/FanControl.DeepCoolDigital/           the plugin
+  DeepCoolDigitalPlugin.cs                IPlugin2 entry point + update loop
+  DeepCoolDisplayDevice.cs                HID connect/send + reconnect logic
+  DeepCoolDisplaySensor.cs                "DeepCool Display CPU Temp" sensor
+  CpuTemperatureSource.cs                 LibreHardwareMonitor wrapper
+  CpuUsage.cs                             GetSystemTimes sampler
+  Log.cs                                  file log with off/events/verbose levels
+src/FanControl.DeepCoolDigital.Core/      pure, unit-testable core (netstandard2.0)
+  Protocols/                              packet builders (AG protocol included)
+  DeviceRegistry.cs                       VID/PID -> model + capabilities + protocol
+  PluginConfig.cs                         ini parsing + hot reload
+  CpuUsageCalculator.cs                   usage math
+  TemperatureSensorSelector.cs            sensor selection
+tests/FanControl.DeepCoolDigital.Tests/   NUnit test suite
+tools/DeepCoolDigitalProbe/               standalone HID test CLI
 ```
 
 ## Credits

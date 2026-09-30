@@ -2,18 +2,14 @@ using System;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
+using FanControl.DeepCoolDigital.Core;
+using FanControl.DeepCoolDigital.Core.Protocols;
 using HidSharp;
 
 namespace DeepCoolDigitalProbe
 {
     internal static class Program
     {
-        private const int DefaultVendorId = 0x3633;
-        private const int AgDigitalProductId = 0x0008;
-        private const byte ReportId = 0x10;
-        private const byte StatusCelsius = 19;
-        private const byte StatusUsage = 76;
-
         private static int Main(string[] args)
         {
             if (args.Length == 0) return Usage();
@@ -23,9 +19,9 @@ namespace DeepCoolDigitalProbe
                 case "list":
                     return List();
                 case "temp":
-                    return Send(StatusCelsius, args, "temperature");
+                    return Send(DisplayField.Temperature, args, "temperature");
                 case "usage":
-                    return Send(StatusUsage, args, "usage");
+                    return Send(DisplayField.Usage, args, "usage");
                 default:
                     return Usage();
             }
@@ -42,23 +38,25 @@ namespace DeepCoolDigitalProbe
 
         private static int List()
         {
-            var devices = DeviceList.Local.GetHidDevices(DefaultVendorId).ToList();
+            var devices = DeviceList.Local.GetHidDevices(DeviceRegistry.DeepCoolVendorId).ToList();
 
             if (devices.Count == 0)
             {
-                Console.WriteLine($"No DeepCool HID device found (VID=0x{DefaultVendorId:X4}).");
+                Console.WriteLine($"No DeepCool HID device found (VID=0x{DeviceRegistry.DeepCoolVendorId:X4}).");
                 return 1;
             }
 
             foreach (HidDevice device in devices)
             {
-                Console.WriteLine($"VID=0x{device.VendorID:X4} PID=0x{device.ProductID:X4} | {device.GetProductName()} | out={device.GetMaxOutputReportLength()}");
+                DeviceDefinition definition = DeviceRegistry.Find(device.VendorID, device.ProductID);
+                string support = definition != null ? definition.Model : "unsupported";
+                Console.WriteLine($"VID=0x{device.VendorID:X4} PID=0x{device.ProductID:X4} | {device.GetProductName()} | [{support}] | out={device.GetMaxOutputReportLength()}");
             }
 
             return 0;
         }
 
-        private static int Send(byte status, string[] args, string label)
+        private static int Send(DisplayField field, string[] args, string label)
         {
             if (args.Length < 2 || !float.TryParse(args[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float value))
             {
@@ -83,11 +81,12 @@ namespace DeepCoolDigitalProbe
             if (seconds <= 0) seconds = 10;
             if (interval <= 0) interval = 1000;
 
-            HidDevice device = DeviceList.Local.GetHidDevices(DefaultVendorId, AgDigitalProductId).FirstOrDefault();
+            DeviceDefinition definition = DeviceRegistry.AgDigital;
+            HidDevice device = DeviceList.Local.GetHidDevices(definition.VendorId, definition.ProductId).FirstOrDefault();
 
             if (device == null)
             {
-                Console.WriteLine($"No AG-DIGITAL device found (VID=0x{DefaultVendorId:X4}, PID=0x{AgDigitalProductId:X4}).");
+                Console.WriteLine($"No AG DIGITAL device found (VID=0x{definition.VendorId:X4}, PID=0x{definition.ProductId:X4}).");
                 return 1;
             }
 
@@ -99,15 +98,15 @@ namespace DeepCoolDigitalProbe
 
             using (stream)
             {
-                var packet = new byte[64];
-                packet[0] = ReportId;
-                packet[1] = status;
+                IDisplayProtocol protocol = definition.CreateProtocol();
+                byte[] packet = protocol.BuildPacket(field, value, false);
 
-                int digits = Math.Max(0, (int)value);
-                packet[3] = (byte)(digits < 100 ? digits % 100 / 10 : 9);
-                packet[4] = (byte)(digits < 100 ? digits % 10 : 9);
+                foreach (byte[] initPacket in protocol.CreateInitializationPackets())
+                {
+                    stream.Write(initPacket);
+                }
 
-                Console.WriteLine($"Sending {label}={digits} every {interval}ms for {seconds}s...");
+                Console.WriteLine($"Sending {label}={Math.Max(0, (int)value)} every {interval}ms for {seconds}s...");
 
                 DateTime end = DateTime.UtcNow.AddSeconds(seconds);
 

@@ -17,4 +17,8 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FanControl.DeepCoolDigital.Core\FanControl.DeepCoolDigital.Core.csproj" />
+  </ItemGroup>
+
 </Project>

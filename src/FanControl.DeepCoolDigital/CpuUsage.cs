@@ -1,8 +1,16 @@
 using System;
 using System.Runtime.InteropServices;
+using FanControl.DeepCoolDigital.Core;
 
 namespace FanControl.DeepCoolDigital
 {
+    /// <summary>
+    /// Samples CPU usage from the Windows kernel system time counters.
+    /// </summary>
+    /// <remarks>
+    /// The readings are converted to percentages by <see cref="CpuUsageCalculator"/>; this class only
+    /// owns the native interop and the previous sample state.
+    /// </remarks>
     internal sealed class CpuUsage
     {
         [StructLayout(LayoutKind.Sequential)]
@@ -26,6 +34,10 @@ namespace FanControl.DeepCoolDigital
         private bool _hasPrevious;
         private float _lastUsage;
 
+        /// <summary>
+        /// Reads the CPU usage accumulated since the previous call.
+        /// </summary>
+        /// <returns>The CPU usage percentage, between <c>0</c> and <c>100</c>.</returns>
         public float Read()
         {
             if (!GetSystemTimes(out NativeFileTime idle, out NativeFileTime kernel, out NativeFileTime user))
@@ -46,18 +58,21 @@ namespace FanControl.DeepCoolDigital
                 return 0f;
             }
 
-            ulong idleDelta = idleTime - _previousIdle;
-            ulong totalDelta = (kernelTime - _previousKernel) + (userTime - _previousUser);
+            float usage = CpuUsageCalculator.Calculate(
+                _previousIdle,
+                _previousKernel,
+                _previousUser,
+                idleTime,
+                kernelTime,
+                userTime,
+                _lastUsage);
 
             _previousIdle = idleTime;
             _previousKernel = kernelTime;
             _previousUser = userTime;
+            _lastUsage = usage;
 
-            if (totalDelta == 0) return _lastUsage;
-
-            float usage = 100f * (totalDelta - idleDelta) / totalDelta;
-            _lastUsage = Math.Max(0f, Math.Min(100f, usage));
-            return _lastUsage;
+            return usage;
         }
     }
 }
