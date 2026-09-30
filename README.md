@@ -1,0 +1,230 @@
+# FanControl.DeepCoolDigital
+
+[![build](https://github.com/roalvesrj/FanControl.DeepCoolDigital/actions/workflows/build.yml/badge.svg)](https://github.com/roalvesrj/FanControl.DeepCoolDigital/actions/workflows/build.yml)
+[![license: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+
+A [FanControl](https://github.com/Rem0o/FanControl.Releases) plugin that drives the status display of DeepCool **DIGITAL** air coolers with live CPU data, so you no longer need DeepCool Hub running in the background just to show numbers on the cooler.
+
+The display can be configured to show:
+
+- **CPU temperature only**
+- **CPU usage only**
+- **Dynamic** — alternates between temperature and usage every few seconds, the same behaviour as DeepCool Hub's "Dynamic mode"
+
+## Table of Contents
+
+- [Features](#features)
+- [Supported devices](#supported-devices)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Replacing DeepCool Hub](#replacing-deepcool-hub)
+- [How it works](#how-it-works)
+- [Troubleshooting](#troubleshooting)
+- [Probe tool](#probe-tool)
+- [Building from source](#building-from-source)
+- [Project structure](#project-structure)
+- [Credits](#credits)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Features
+
+- CPU temperature read through **LibreHardwareMonitor** — the same sensor backend FanControl already ships. No second monitoring tool (HWInfo etc.), no extra driver, no extra service.
+- CPU usage sampled straight from the Windows kernel (`GetSystemTimes`).
+- Registers a **`DeepCool Display CPU Temp`** sensor inside FanControl, usable in any fan curve.
+- High-temperature alert on the cooler, matching DeepCool Hub ("exceeds 90 °C" by default).
+- Values above 99 are clamped to 99, exactly like DeepCool Hub does.
+- **Hot-reload configuration**: edit the ini file and the change is applied in about a second — no FanControl restart.
+- Automatic reconnect: keeps retrying every 5 seconds when the display is missing or busy (re-plug, sleep/resume, USB reset, DeepCool Hub started by accident).
+- A tiny CLI probe (`DeepCoolDigitalProbe`) that talks to the display without FanControl — useful for testing and for adding support to new devices.
+- No effect on fan control: the plugin never touches fan curves or controls.
+
+## Supported devices
+
+| Device | Status |
+| ------ | ------ |
+| DeepCool AG620 DIGITAL | ✅ tested — VID `0x3633`, PID `0x0008`, HID name `AG-DIGITAL` |
+| Other AG / AK DIGITAL coolers sharing PID `0x0008` (AG300/AG400/AG500/AG620, AK400/AK500/AK620 families) | ⚠️ expected to work (same packet format), untested — feedback welcome |
+| Other DeepCool DIGITAL models (PRO, NYX, AIO LCD…) | ❌ different packet formats; not supported |
+
+The USB ids are configurable (`vendorId` / `productId` in the ini), so other models can be tried without rebuilding. Run `DeepCoolDigitalProbe list` to see what your machine reports.
+
+## Requirements
+
+- Windows 10 / 11
+- **FanControl V238 or newer** (tested with V281). The plugin targets .NET Framework 4.8, so it works with both the `.NET 10` and the `net 4.8` FanControl distributions.
+- A DeepCool DIGITAL cooler connected to an internal USB 2.0 header
+
+> **DeepCool Hub must not run at the same time.** The display is a USB HID device and the official software keeps writing to it. Close `DeepCool.exe` from the tray and stop its services — see [Replacing DeepCool Hub](#replacing-deepcool-hub).
+
+## Installation
+
+1. Close FanControl.
+2. Copy **both** files below into the `Plugins` folder of your FanControl installation (e.g. `C:\Program Files (x86)\FanControl\Plugins\`):
+   - `FanControl.DeepCoolDigital.dll`
+   - `DeepCoolDigital.ini`
+3. Start FanControl.
+
+The `DeepCool Display CPU Temp` sensor appears in the temperature list and the cooler display starts showing the configured mode. No installer and no other files: `HidSharp` and `LibreHardwareMonitor` are loaded from FanControl's own folder.
+
+## Configuration
+
+All settings live in `DeepCoolDigital.ini`, next to the plugin dll (`Plugins\DeepCoolDigital.ini`).
+
+| Key | Default | Description |
+| --- | ------- | ----------- |
+| `mode` | `temp` | `temp` = CPU temperature only • `usage` = CPU usage only • `dynamic` = alternate between both every `autoSwitchSeconds` (also accepts `temperature`, `load`, `both`, `auto`) |
+| `autoSwitchSeconds` | `5` | Seconds between temperature and usage when `mode=dynamic` |
+| `alarmTemperature` | `90` | The cooler's high-temperature alert is triggered when the temperature **exceeds** this value (°C) |
+| `vendorId` | `0x3633` | USB vendor id |
+| `productId` | `0x0008` | USB product id |
+| `log` | `false` | Write `DeepCoolDigital.log` (connection events, config reloads, errors) next to the plugin dll |
+
+The file is re-read automatically: save it and the display changes within ~1 second, no restart needed.
+
+Example:
+
+```ini
+mode=dynamic
+autoSwitchSeconds=10
+```
+
+### Modes vs DeepCool Hub
+
+DeepCool Hub exposes exactly the same three options for this device family (verified against the official application): "Display CPU temperature only", "Display CPU usage only" and "Dynamic mode — temperature and usage change every 5 seconds". The panel can only render one value at a time, so "both" always means alternating — there is no simultaneous temperature + usage mode in this hardware.
+
+## Replacing DeepCool Hub
+
+1. Close DeepCool Hub from the tray.
+2. Stop its services (admin PowerShell):
+
+   ```powershell
+   Stop-Service "Deep Cool Display Service", "Deep Cool Helper Service"
+   ```
+
+3. If you want to keep them from coming back at boot (recommended if you no longer use the Hub):
+
+   ```powershell
+   Set-Service "Deep Cool Display Service" -StartupType Manual
+   Set-Service "Deep Cool Helper Service" -StartupType Manual
+   ```
+
+4. Restart FanControl.
+
+The display is a single HID device; if DeepCool Hub runs at the same time as this plugin, both keep overwriting each other's data. Pick one.
+
+## How it works
+
+The plugin implements `IPlugin2` and runs inside the FanControl process:
+
+- **CPU temperature** — a second `Computer` instance of `LibreHardwareMonitorLib` (CPU only) is created in-process and reuses the PawnIO/WinRing0 driver FanControl already loaded. Sensor priority: `CPU Package` (Intel) → `Core (Tctl/Tdie)` / `Core (Tctl)` / `Core (Tdie)` (AMD) → highest CPU temperature as fallback.
+- **CPU usage** — `GetSystemTimes` deltas between two plugin update cycles (Windows kernel counters, same math as Task Manager).
+- **Display output** — at every FanControl update cycle (≈1 Hz) the plugin writes a 64-byte HID output report to VID `0x3633`, PID `0x0008`:
+
+  | Byte | Meaning |
+  | ---- | ------- |
+  | 0 | Report id `0x10` |
+  | 1 | `19` = temperature, `76` = usage |
+  | 2 | Unused |
+  | 3 | Tens digit (`value / 10 % 10`, or `9` when value > 99) |
+  | 4 | Ones digit (`value % 10`, or `9` when value > 99) |
+  | 5 | `1` when the temperature exceeds `alarmTemperature`, else `0` |
+
+- The plugin also registers the temperature it uses as the `DeepCool Display CPU Temp` sensor, so you can see it (and use it in fan curves) inside FanControl.
+- When `mode=dynamic`, the plugin alternates the report type on the configured interval; the display itself keeps the last value received.
+
+Protocol was reverse engineered from the community projects listed in [Credits](#credits).
+
+## Troubleshooting
+
+**Display shows nothing / frozen, or the log says the device could not be opened**
+DeepCool Hub (or its display service) is running and holds the device. Close the Hub and stop the services — see [Replacing DeepCool Hub](#replacing-deepcool-hub). The plugin reconnects within 5 seconds.
+
+**Display disappears after sleep/resume, re-plug or USB reset**
+Expected behaviour: the plugin detects the lost handle, closes it and reconnects every 5 seconds. No action needed.
+
+**Device not found**
+Run `DeepCoolDigitalProbe list` and check the product id. If your device reports a different PID, set it in the ini (`productId=0x....`) — but note that different DeepCool families use different packet formats.
+
+**Nothing happens at all after starting FanControl**
+Make sure both files are directly inside the `Plugins` folder, then set `log=true` in the ini and restart FanControl. `DeepCoolDigital.log` will tell you what the plugin is doing.
+
+**CPU temperature not available**
+Update FanControl to a recent version; the plugin relies on LibreHardwareMonitor's driver (PawnIO on V238+) being functional. If FanControl itself cannot see CPU temperatures, the plugin can't either.
+
+**FanControl (net 4.8 build) on Windows 7/8?**
+Not supported. Windows 10/11 only.
+
+## Probe tool
+
+A standalone CLI that writes directly to the display, no FanControl required. Great to verify your hardware and the protocol before/without installing the plugin.
+
+```text
+DeepCoolDigitalProbe list
+DeepCoolDigitalProbe temp  42 --seconds 10
+DeepCoolDigitalProbe usage 37 --seconds 10
+```
+
+Options: `--seconds N` (duration, default 10) and `--interval MS` (write interval, default 1000).
+
+Build output: `tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe`.
+
+## Building from source
+
+Requirements:
+
+- Windows with .NET Framework 4.8 targeting pack
+- .NET SDK (tested with 10.0) or Visual Studio 2022
+
+```powershell
+git clone https://github.com/roalvesrj/FanControl.DeepCoolDigital
+cd FanControl.DeepCoolDigital
+dotnet build -c Release
+```
+
+Plugin output: `src\FanControl.DeepCoolDigital\bin\Release\FanControl.DeepCoolDigital.dll` (+ `DeepCoolDigital.ini`).
+
+The `lib\` folder contains the **unmodified reference assemblies** shipped with the FanControl V281 release archive (`FanControl.Plugins.dll`, `HidSharp.dll`, `LibreHardwareMonitorLib.dll` + XML docs). They are used only for compilation; at runtime the plugin binds to FanControl's own copies, and nothing from `lib\` is redistributed in the plugin output.
+
+## Project structure
+
+```text
+FanControl.DeepCoolDigital.sln
+lib/                                  reference assemblies from the FanControl release
+src/FanControl.DeepCoolDigital/       the plugin
+  DeepCoolDigitalPlugin.cs            IPlugin2 entry point + update loop
+  DeepCoolDisplayDevice.cs            HID connect/send + reconnect logic
+  DeepCoolDisplaySensor.cs            "DeepCool Display CPU Temp" sensor
+  CpuTemperatureSource.cs             LibreHardwareMonitor wrapper
+  CpuUsage.cs                         GetSystemTimes sampler
+  PluginConfig.cs                     ini parsing + hot reload
+  Log.cs                              optional file log
+tools/DeepCoolDigitalProbe/           standalone HID test CLI
+```
+
+## Credits
+
+This plugin exists because of the reverse engineering work done by others:
+
+- [Nortank12/deepcool-digital-linux](https://github.com/Nortank12/deepcool-digital-linux) (GPL-3.0) — documented and implemented the DeepCool DIGITAL HID protocol, including the AG series (`ag_series.rs`) this plugin is based on.
+- [aSel1x/deepcool-digital-windows](https://github.com/aSel1x/deepcool-digital-windows) (GPL-3.0) — Windows port and protocol validation.
+- [samehfido/DeepCool-AK400-digital-cooler](https://github.com/samehfido/DeepCool-AK400-digital-cooler) — early C#/HidSharp proof-of-concept for this hardware family.
+- [Rem0o](https://github.com/Rem0o) — FanControl, the plugin API and the reference plugins used as documentation.
+- [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) — sensor backend.
+
+## Contributing
+
+Contributions are very welcome:
+
+- **New device reports** — open an issue with the output of `DeepCoolDigitalProbe list` and (with `log=true`) the plugin log, stating your exact cooler model and firmware.
+- **Bug reports** — issues with log snippets are the fastest path.
+- **Pull requests** — keep the existing code style (no external runtime dependencies except the ones already in `lib\`), build with `dotnet build -c Release`, and describe how you tested the change.
+
+By submitting a pull request you agree to license your contribution under the same license as this project (GPL-3.0-or-later).
+
+## License
+
+Copyright (C) 2026 Rômulo Alves
+
+This project is free software: you can redistribute it and/or modify it under the terms of the **GNU General Public License, version 3 or later** — see [LICENSE](LICENSE). The GPL is used here to stay consistent with the GPL-3.0 protocol reference implementations this work is based on.

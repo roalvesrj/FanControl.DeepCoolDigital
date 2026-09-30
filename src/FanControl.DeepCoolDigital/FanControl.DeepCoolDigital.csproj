@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>FanControl.DeepCoolDigital</AssemblyName>
+    <RootNamespace>FanControl.DeepCoolDigital</RootNamespace>
+    <Version>0.1.0</Version>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="FanControl.Plugins">
+      <HintPath>..\..\lib\FanControl.Plugins.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="HidSharp">
+      <HintPath>..\..\lib\HidSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="LibreHardwareMonitorLib">
+      <HintPath>..\..\lib\LibreHardwareMonitorLib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="DeepCoolDigital.ini">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
