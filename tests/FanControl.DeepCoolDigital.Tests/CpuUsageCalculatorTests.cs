@@ -41,6 +41,14 @@ namespace FanControl.DeepCoolDigital.Tests
         }
 
         [Test]
+        public void Calculate_CounterRegression_ReturnsFallback()
+        {
+            float result = CpuUsageCalculator.Calculate(100, 100, 100, 50, 50, 50, 42f);
+
+            Assert.That(result, Is.EqualTo(42f));
+        }
+
+        [Test]
         public void Calculate_ZeroDelta_ReturnsFallback()
         {
             float result = CpuUsageCalculator.Calculate(10, 20, 30, 10, 20, 30, 33f);

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using FanControl.DeepCoolDigital.Core;
 using FanControl.Plugins;
@@ -21,6 +23,9 @@ namespace FanControl.DeepCoolDigital
         private CpuUsage _cpuUsage;
         private DeepCoolDisplayDevice _display;
         private DeepCoolDisplaySensor _temperatureSensor;
+        private IReadOnlyList<string> _temperatureSensorNames;
+        private int _vendorId;
+        private int _productId;
         private int _lastModeSwitch;
         private bool _showUsage;
 
@@ -167,6 +172,9 @@ namespace FanControl.DeepCoolDigital
 
             _cpuUsage = new CpuUsage();
             _display = new DeepCoolDisplayDevice(_config);
+            _vendorId = _config.VendorId;
+            _productId = _config.ProductId;
+            _temperatureSensorNames = _config.PreferredTemperatureSensors;
             _lastModeSwitch = Environment.TickCount;
             _showUsage = _config.Mode == DisplayMode.Usage;
         }
@@ -184,6 +192,30 @@ namespace FanControl.DeepCoolDigital
                 Log.Event($"Config reloaded: mode={_config.Mode}, autoSwitchSeconds={_config.AutoSwitchSeconds}, alarmTemperature={_config.AlarmTemperature}");
                 _lastModeSwitch = Environment.TickCount;
                 _showUsage = _config.Mode == DisplayMode.Usage;
+
+                if (_config.VendorId != _vendorId || _config.ProductId != _productId)
+                {
+                    _vendorId = _config.VendorId;
+                    _productId = _config.ProductId;
+                    _display?.Dispose();
+                    _display = new DeepCoolDisplayDevice(_config);
+                }
+
+                if (_temperatureSensorNames == null || !_config.PreferredTemperatureSensors.SequenceEqual(_temperatureSensorNames))
+                {
+                    _temperatureSensorNames = _config.PreferredTemperatureSensors;
+                    _temperatureSource?.Dispose();
+
+                    try
+                    {
+                        _temperatureSource = new CpuTemperatureSource(_temperatureSensorNames);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Event("CPU temperature source unavailable after reload: " + ex.Message);
+                        _temperatureSource = null;
+                    }
+                }
             }
 
             float? temperature = _temperatureSource?.Read();

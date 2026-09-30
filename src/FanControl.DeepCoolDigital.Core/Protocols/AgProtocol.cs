@@ -37,11 +37,19 @@ namespace FanControl.DeepCoolDigital.Core.Protocols
         public byte[] BuildPacket(DisplayField field, float value, bool alarm)
         {
             var packet = new byte[PacketLength];
-            int digits = (int)value;
 
-            if (digits < 0)
+            int digits;
+            if (float.IsNaN(value) || value <= 0f)
             {
                 digits = 0;
+            }
+            else if (value >= 100f)
+            {
+                digits = 100;
+            }
+            else
+            {
+                digits = (int)value;
             }
 
             packet[0] = ReportId;

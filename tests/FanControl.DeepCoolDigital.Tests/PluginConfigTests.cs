@@ -176,6 +176,25 @@ namespace FanControl.DeepCoolDigital.Tests
             Assert.That(config.TryReload(), Is.False);
         }
 
+        [Test]
+        public void TryReload_FileLocked_KeepsPreviousValuesAndRetriesLater()
+        {
+            PluginConfig config = LoadWith("mode=usage");
+
+            File.WriteAllText(_path, "mode=temp");
+            File.SetLastWriteTimeUtc(_path, DateTime.UtcNow.AddSeconds(10));
+
+            using (new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                Assert.That(config.TryReload(), Is.False);
+            }
+
+            Assert.That(config.Mode, Is.EqualTo(DisplayMode.Usage));
+
+            Assert.That(config.TryReload(), Is.True);
+            Assert.That(config.Mode, Is.EqualTo(DisplayMode.Temperature));
+        }
+
         private PluginConfig LoadWith(string content)
         {
             File.WriteAllText(_path, content);

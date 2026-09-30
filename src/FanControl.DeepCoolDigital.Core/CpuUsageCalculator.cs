@@ -20,7 +20,7 @@ namespace FanControl.DeepCoolDigital.Core
         /// <param name="currentIdle">The idle time of the current sample, in 100 ns ticks.</param>
         /// <param name="currentKernel">The kernel time of the current sample, in 100 ns ticks.</param>
         /// <param name="currentUser">The user time of the current sample, in 100 ns ticks.</param>
-        /// <param name="fallback">The value to return when the counters did not advance.</param>
+        /// <param name="fallback">The value to return when the counters did not advance or moved backwards.</param>
         /// <returns>The CPU usage percentage, between <c>0</c> and <c>100</c>.</returns>
         public static float Calculate(
             ulong previousIdle,
@@ -31,6 +31,11 @@ namespace FanControl.DeepCoolDigital.Core
             ulong currentUser,
             float fallback)
         {
+            if (currentIdle < previousIdle || currentKernel < previousKernel || currentUser < previousUser)
+            {
+                return Clamp(fallback);
+            }
+
             ulong idleDelta = currentIdle - previousIdle;
             ulong totalDelta = currentKernel - previousKernel + currentUser - previousUser;
 

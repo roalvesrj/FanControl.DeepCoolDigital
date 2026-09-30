@@ -152,7 +152,7 @@ Expected behaviour: the plugin detects the lost handle, closes it and reconnects
 Run `DeepCoolDigitalProbe list` and check the product id. If your device reports a different PID, set it in the ini (`productId=0x....`) — but note that different DeepCool families use different packet formats.
 
 **Nothing happens at all after starting FanControl**
-Make sure both files are directly inside the `Plugins` folder, then set `log=true` in the ini and restart FanControl. `DeepCoolDigital.log` will tell you what the plugin is doing.
+Make sure all files from the release are directly inside the `Plugins` folder, then set `logLevel=verbose` in the ini and restart FanControl. `DeepCoolDigital.log` will tell you what the plugin is doing.
 
 **CPU temperature not available**
 Update FanControl to a recent version; the plugin relies on LibreHardwareMonitor's driver (PawnIO on V238+) being functional. If FanControl itself cannot see CPU temperatures, the plugin can't either.

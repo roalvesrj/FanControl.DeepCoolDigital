@@ -16,10 +16,15 @@ namespace FanControl.DeepCoolDigital
     {
         private static LogLevel _level = LogLevel.Off;
         private static string _path;
+        private static bool _initialized;
 
         /// <summary>
-        /// Applies the log settings from the configuration, truncating the log file.
+        /// Applies the log settings from the configuration.
         /// </summary>
+        /// <remarks>
+        /// The log file is truncated only once per process; reloading the configuration keeps the history
+        /// and just appends new entries.
+        /// </remarks>
         /// <param name="config">The plugin configuration.</param>
         /// <exception cref="ArgumentNullException"><paramref name="config"/> is <see langword="null" />.</exception>
         public static void Init(PluginConfig config)
@@ -39,8 +44,15 @@ namespace FanControl.DeepCoolDigital
             try
             {
                 string directory = Path.GetDirectoryName(typeof(Log).Assembly.Location) ?? string.Empty;
-                _path = Path.Combine(directory, "DeepCoolDigital.log");
-                File.WriteAllText(_path, string.Empty);
+                string newPath = Path.Combine(directory, "DeepCoolDigital.log");
+
+                if (!_initialized)
+                {
+                    File.WriteAllText(newPath, string.Empty);
+                    _initialized = true;
+                }
+
+                _path = newPath;
             }
             catch
             {

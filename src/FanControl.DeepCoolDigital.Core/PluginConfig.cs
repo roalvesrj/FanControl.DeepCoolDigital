@@ -25,10 +25,7 @@ namespace FanControl.DeepCoolDigital.Core
         /// </summary>
         public const int DefaultProductId = 0x0008;
 
-        /// <summary>
-        /// The default list of preferred CPU temperature sensor names, in priority order.
-        /// </summary>
-        public static readonly string[] DefaultPreferredTemperatureSensors =
+        private static readonly string[] DefaultSensorNames =
         {
             "CPU Package",
             "Core (Tctl/Tdie)",
@@ -38,7 +35,15 @@ namespace FanControl.DeepCoolDigital.Core
             "Core Average"
         };
 
+        /// <summary>
+        /// Gets the default list of preferred CPU temperature sensor names, in priority order.
+        /// </summary>
+        /// <value>A read-only list of the built-in sensor names.</value>
+        public static IReadOnlyList<string> DefaultPreferredTemperatureSensors => Array.AsReadOnly(DefaultSensorNames);
+
+        private string[] _preferredTemperatureSensors = DefaultSensorNames;
         private DateTime _loadedWriteUtc = DateTime.MinValue;
+        private bool _loadedSuccessfully;
 
         /// <summary>
         /// Gets the USB vendor id of the display.
@@ -80,7 +85,7 @@ namespace FanControl.DeepCoolDigital.Core
         /// Gets the preferred CPU temperature sensor names, in priority order.
         /// </summary>
         /// <value>The configured sensor names. The default is <see cref="DefaultPreferredTemperatureSensors"/>.</value>
-        public string[] PreferredTemperatureSensors { get; private set; } = DefaultPreferredTemperatureSensors;
+        public IReadOnlyList<string> PreferredTemperatureSensors => Array.AsReadOnly(_preferredTemperatureSensors);
 
         /// <summary>
         /// Gets the full path of the configuration file this instance was loaded from.
@@ -105,19 +110,20 @@ namespace FanControl.DeepCoolDigital.Core
 
             try
             {
-                config._loadedWriteUtc = File.Exists(filePath)
-                    ? File.GetLastWriteTimeUtc(filePath)
-                    : DateTime.MinValue;
-
                 if (!File.Exists(filePath))
                 {
+                    config._loadedSuccessfully = true;
                     return config;
                 }
+
+                string[] lines = File.ReadAllLines(filePath);
+                config._loadedWriteUtc = File.GetLastWriteTimeUtc(filePath);
+                config._loadedSuccessfully = true;
 
                 bool logLevelSpecified = false;
                 bool legacyLogEnabled = false;
 
-                foreach (string rawLine in File.ReadAllLines(filePath))
+                foreach (string rawLine in lines)
                 {
                     string line = rawLine.Trim();
                     if (line.Length == 0 || line.StartsWith("#") || line.StartsWith(";"))
@@ -159,7 +165,7 @@ namespace FanControl.DeepCoolDigital.Core
                             legacyLogEnabled = ParseBool(value, false);
                             break;
                         case "preferredtempsensors":
-                            config.PreferredTemperatureSensors = ParseSensorNames(value, config.PreferredTemperatureSensors);
+                            config._preferredTemperatureSensors = ParseSensorNames(value, config._preferredTemperatureSensors);
                             break;
                     }
                 }
@@ -171,7 +177,9 @@ namespace FanControl.DeepCoolDigital.Core
             }
             catch
             {
-                // A malformed configuration must never prevent the plugin from loading; defaults apply.
+                // A transient I/O failure leaves _loadedSuccessfully false and the timestamp unlatched,
+                // so TryReload retries on the next cycle. Malformed values never throw: each key falls
+                // back to its default during parsing.
             }
 
             return config;
@@ -195,7 +203,12 @@ namespace FanControl.DeepCoolDigital.Core
                 }
 
                 var reloaded = Load(FilePath);
-                _loadedWriteUtc = writeUtc;
+                if (!reloaded._loadedSuccessfully)
+                {
+                    return false;
+                }
+
+                _loadedWriteUtc = reloaded._loadedWriteUtc;
 
                 bool changed =
                     reloaded.Mode != Mode ||
@@ -223,7 +236,7 @@ namespace FanControl.DeepCoolDigital.Core
             VendorId = other.VendorId;
             ProductId = other.ProductId;
             LogLevel = other.LogLevel;
-            PreferredTemperatureSensors = other.PreferredTemperatureSensors;
+            _preferredTemperatureSensors = other._preferredTemperatureSensors;
         }
 
         private static DisplayMode ParseMode(string value, DisplayMode fallback)

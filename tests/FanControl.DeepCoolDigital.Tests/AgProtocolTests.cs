@@ -70,6 +70,11 @@ namespace FanControl.DeepCoolDigital.Tests
         [TestCase(100f, 9, 9)]
         [TestCase(105f, 9, 9)]
         [TestCase(-5f, 0, 0)]
+        [TestCase(-0.5f, 0, 0)]
+        [TestCase(float.NaN, 0, 0)]
+        [TestCase(float.PositiveInfinity, 9, 9)]
+        [TestCase(float.NegativeInfinity, 0, 0)]
+        [TestCase(1e9f, 9, 9)]
         public void BuildPacket_TemperatureDigits_AreClamped(float value, byte expectedTens, byte expectedOnes)
         {
             byte[] packet = _protocol.BuildPacket(DisplayField.Temperature, value, false);

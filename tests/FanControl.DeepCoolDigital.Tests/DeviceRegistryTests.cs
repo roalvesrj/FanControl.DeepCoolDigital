@@ -57,5 +57,32 @@ namespace FanControl.DeepCoolDigital.Tests
         {
             Assert.That(DeviceRegistry.All, Does.Contain(DeviceRegistry.AgDigital));
         }
+
+        [Test]
+        public void Resolve_KnownIdentity_ReturnsDefinitionWithoutFallback()
+        {
+            DeviceDefinition definition = DeviceRegistry.Resolve(0x3633, 0x0008, out bool usedFallback);
+
+            Assert.That(definition, Is.SameAs(DeviceRegistry.AgDigital));
+            Assert.That(usedFallback, Is.False);
+        }
+
+        [Test]
+        public void Resolve_UnknownDeepCoolProductId_ReturnsAgFallback()
+        {
+            DeviceDefinition definition = DeviceRegistry.Resolve(DeviceRegistry.DeepCoolVendorId, 0x9999, out bool usedFallback);
+
+            Assert.That(definition, Is.SameAs(DeviceRegistry.AgDigital));
+            Assert.That(usedFallback, Is.True);
+        }
+
+        [Test]
+        public void Resolve_UnknownVendor_ReturnsNullAndNoFallback()
+        {
+            DeviceDefinition definition = DeviceRegistry.Resolve(0x1234, 0x0008, out bool usedFallback);
+
+            Assert.That(definition, Is.Null);
+            Assert.That(usedFallback, Is.False);
+        }
     }
 }

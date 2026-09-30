@@ -37,11 +37,13 @@ namespace FanControl.DeepCoolDigital.Core
             AgDigital
         };
 
+        private static readonly IReadOnlyList<DeviceDefinition> ReadOnlyDefinitions = System.Array.AsReadOnly(Definitions);
+
         /// <summary>
         /// Gets all known device definitions.
         /// </summary>
         /// <value>A read-only list of every entry in the registry.</value>
-        public static IReadOnlyList<DeviceDefinition> All => Definitions;
+        public static IReadOnlyList<DeviceDefinition> All => ReadOnlyDefinitions;
 
         /// <summary>
         /// Finds the definition matching a USB identity.
@@ -57,6 +59,36 @@ namespace FanControl.DeepCoolDigital.Core
                 {
                     return definition;
                 }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Resolves the definition to use for a USB identity, applying the built-in fallback policy.
+        /// </summary>
+        /// <param name="vendorId">The USB vendor id of the device.</param>
+        /// <param name="productId">The USB product id of the device.</param>
+        /// <param name="usedFallback">When this method returns, contains <see langword="true" /> when the identity was not registered and the AG protocol was assumed; otherwise, <see langword="false" />. This parameter is treated as uninitialized.</param>
+        /// <returns>
+        /// The matching <see cref="DeviceDefinition"/>; the AG DIGITAL definition when the vendor is DeepCool
+        /// but the product id is unknown (with <paramref name="usedFallback"/> set to <see langword="true" />);
+        /// otherwise, <see langword="null" />.
+        /// </returns>
+        public static DeviceDefinition Resolve(int vendorId, int productId, out bool usedFallback)
+        {
+            usedFallback = false;
+
+            DeviceDefinition definition = Find(vendorId, productId);
+            if (definition != null)
+            {
+                return definition;
+            }
+
+            if (vendorId == DeepCoolVendorId)
+            {
+                usedFallback = true;
+                return AgDigital;
             }
 
             return null;

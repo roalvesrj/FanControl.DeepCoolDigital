@@ -32,11 +32,10 @@ namespace FanControl.DeepCoolDigital
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
 
-            _definition = DeviceRegistry.Find(config.VendorId, config.ProductId);
+            _definition = DeviceRegistry.Resolve(config.VendorId, config.ProductId, out bool usedFallback);
 
-            if (_definition == null && config.VendorId == DeviceRegistry.DeepCoolVendorId)
+            if (usedFallback)
             {
-                _definition = DeviceRegistry.AgDigital;
                 Log.Event($"Unknown DeepCool device {config.VendorId:X4}:{config.ProductId:X4}; assuming the AG protocol.");
             }
 
@@ -137,14 +136,30 @@ namespace FanControl.DeepCoolDigital
 
                 if (device.TryOpen(out HidStream stream))
                 {
-                    _stream = stream;
-
-                    foreach (byte[] initPacket in _protocol.CreateInitializationPackets())
+                    try
                     {
-                        stream.Write(initPacket);
+                        foreach (byte[] initPacket in _protocol.CreateInitializationPackets())
+                        {
+                            stream.Write(initPacket);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Event("HID initialization failed: " + ex.Message);
+
+                        try
+                        {
+                            stream.Dispose();
+                        }
+                        catch
+                        {
+                        }
+
+                        return false;
                     }
 
-                    Log.Event($"Connected to {device.GetProductName()} [{_definition.Model}] (VID=0x{device.VendorID:X4}, PID=0x{device.ProductID:X4})");
+                    _stream = stream;
+                    Log.Event($"Connected to {device.GetProductName()} [{_definition.Model}, {_protocol.GetType().Name}] (VID=0x{device.VendorID:X4}, PID=0x{device.ProductID:X4})");
                     return true;
                 }
 
