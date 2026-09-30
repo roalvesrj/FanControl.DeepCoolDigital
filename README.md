@@ -66,6 +66,8 @@ Run `DeepCoolDigitalProbe list` to see what your machine reports; device reports
 
 > **DeepCool Hub must not run at the same time.** The display is a USB HID device and the official software keeps writing to it. Close `DeepCool.exe` from the tray and stop its services — see [Replacing DeepCool Hub](#replacing-deepcool-hub).
 
+> **Do I need DeepCool Hub installed at all?** No. Windows recognizes the display as a standard USB HID device and the plugin talks to it directly; FanControl itself provides everything else the plugin needs (plugin API, HidSharp, LibreHardwareMonitor and its sensor driver). The only vendor-only task that still requires the Hub is updating the cooler's firmware — run it once for that, close it, and keep it disabled while FanControl manages the display.
+
 ## Installation
 
 1. Close FanControl.
