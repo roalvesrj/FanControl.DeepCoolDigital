@@ -87,7 +87,7 @@ All settings live in `DeepCoolDigital.ini`, next to the plugin dll (`Plugins\Dee
 | --- | ------- | ----------- |
 | `mode` | `temp` | `temp` = CPU temperature only • `usage` = CPU usage only • `dynamic` = alternate between both every `autoSwitchSeconds` (also accepts `temperature`, `load`, `both`, `auto`) |
 | `autoSwitchSeconds` | `5` | Seconds between temperature and usage when `mode=dynamic` |
-| `alarmTemperature` | `90` | The cooler's high-temperature alert is triggered when the temperature **exceeds** this value (°C) |
+| `alarmTemperature` | `90` | The cooler's high-temperature alert is triggered when the temperature **reaches or exceeds** this value (°C) |
 | `alarmEnabled` | `true` | Enables the high-temperature alert (DeepCool Hub "Warning Control") |
 | `fahrenheit` | `false` | Shows temperatures in °F on devices that support it (e.g. the AK series); ignored elsewhere |
 | `vendorId` | `0x3633` | USB vendor id of the primary display target |
@@ -112,10 +112,12 @@ With more than one display, or to pin different settings per cooler, add `[devic
 mode=temp
 alarmEnabled=true
 
-[device:0x3633:0x0008]      # AG620 DIGITAL
+[device:0x3633:0x0008]
+# AG620 DIGITAL
 mode=dynamic
 
-[device:0x3633:0x0002]      # AK620 DIGITAL
+[device:0x3633:0x0002]
+# AK620 DIGITAL
 mode=usage
 alarmTemperature=85
 ```
@@ -150,7 +152,8 @@ The plugin implements `IPlugin2` and runs inside the FanControl process:
 
 - **CPU temperature** — a second `Computer` instance of `LibreHardwareMonitorLib` (CPU only) is created in-process and reuses the PawnIO/WinRing0 driver FanControl already loaded. Sensor priority: `CPU Package` (Intel) → `Core (Tctl/Tdie)` / `Core (Tctl)` / `Core (Tdie)` (AMD) → highest CPU temperature as fallback.
 - **CPU usage** — `GetSystemTimes` deltas between two plugin update cycles (Windows kernel counters, same math as Task Manager).
-- **Display output** — at every FanControl update cycle (≈1 Hz) the plugin writes a 64-byte HID output report to VID `0x3633`, PID `0x0008`:
+- **Devices** — every supported display found at startup gets its own session (protocol + HID stream + settings) and is driven at every FanControl update cycle (≈1 Hz). Failures and reconnects are isolated per device.
+- **Protocols** — each device family has its own packet builder in the core, covered by byte-level tests. The tested AG family writes a 64-byte report to VID `0x3633`, PID `0x0008`:
 
   | Byte | Meaning |
   | ---- | ------- |
@@ -159,9 +162,11 @@ The plugin implements `IPlugin2` and runs inside the FanControl process:
   | 2 | Unused |
   | 3 | Tens digit (`value / 10 % 10`, or `9` when value > 99) |
   | 4 | Ones digit (`value % 10`, or `9` when value > 99) |
-  | 5 | `1` when the temperature exceeds `alarmTemperature`, else `0` |
+  | 5 | `1` when the temperature is at or above `alarmTemperature`, else `0` |
 
-- The plugin also registers the temperature it uses as the `DeepCool Display CPU Temp` sensor, so you can see it (and use it in fan curves) inside FanControl.
+  The AK family uses a three-digit layout with a usage status bar (`[2]`), the alert in `[6]`, an initialization packet (`0xAA`) and an "SE" variant that omits the report id.
+
+- The plugin also registers each display's temperature as a FanControl sensor (`DeepCool Display CPU Temp`, plus `DeepCool <model> CPU Temp` for additional devices), usable in fan curves.
 - When `mode=dynamic`, the plugin alternates the report type on the configured interval; the display itself keeps the last value received.
 
 Protocol was reverse engineered from the community projects listed in [Credits](#credits).
@@ -224,15 +229,17 @@ FanControl.DeepCoolDigital.sln
 lib/                                      reference assemblies from the FanControl release
 src/FanControl.DeepCoolDigital/           the plugin
   DeepCoolDigitalPlugin.cs                IPlugin2 entry point + update loop
-  DeepCoolDisplayDevice.cs                HID connect/send + reconnect logic
-  DeepCoolDisplaySensor.cs                "DeepCool Display CPU Temp" sensor
+  DeepCoolDisplaySession.cs               one session per display: HID + protocol + settings
+  DeepCoolDisplaySensor.cs                per-device FanControl sensors
   CpuTemperatureSource.cs                 LibreHardwareMonitor wrapper
   CpuUsage.cs                             GetSystemTimes sampler
   Log.cs                                  file log with off/events/verbose levels
 src/FanControl.DeepCoolDigital.Core/      pure, unit-testable core (netstandard2.0)
-  Protocols/                              packet builders (AG protocol included)
+  Protocols/                              packet builders (AG and AK protocols)
   DeviceRegistry.cs                       VID/PID -> model + capabilities + protocol
-  PluginConfig.cs                         ini parsing + hot reload
+  PluginConfig.cs                         ini parsing (global + per-device sections) + hot reload
+  DeviceSettings.cs / DeviceOverride.cs   merged per-device settings
+  DisplayPolicy.cs                        mode/unit/alarm decision logic
   CpuUsageCalculator.cs                   usage math
   TemperatureSensorSelector.cs            sensor selection
 tests/FanControl.DeepCoolDigital.Tests/   NUnit test suite

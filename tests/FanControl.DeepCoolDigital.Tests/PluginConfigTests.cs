@@ -227,6 +227,26 @@ namespace FanControl.DeepCoolDigital.Tests
         }
 
         [Test]
+        public void Load_DeviceSectionInvalidValue_InheritsGlobal()
+        {
+            PluginConfig config = LoadWith("mode=usage\n\n[device:0x3633:0x0002]\nmode=banana\nalarmTemperature=abc\n");
+
+            DeviceSettings settings = config.ForDevice(0x3633, 0x0002);
+
+            Assert.That(settings.Mode, Is.EqualTo(DisplayMode.Usage));
+            Assert.That(settings.AlarmTemperature, Is.EqualTo(90f));
+            Assert.That(config.DeviceOverrides[0].Mode, Is.Null);
+        }
+
+        [Test]
+        public void Load_SectionHeaderWithTrailingComment_IsParsed()
+        {
+            PluginConfig config = LoadWith("[device:0x3633:0x0002] # AK620 DIGITAL\nmode=usage\n");
+
+            Assert.That(config.ForDevice(0x3633, 0x0002).Mode, Is.EqualTo(DisplayMode.Usage));
+        }
+
+        [Test]
         public void TryReload_SectionChange_AppliesNewOverrides()
         {
             PluginConfig config = LoadWith("mode=temp");

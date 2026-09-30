@@ -191,6 +191,12 @@ namespace FanControl.DeepCoolDigital
 
         private void CreateSessions()
         {
+            foreach (DeepCoolDisplaySession session in _sessions)
+            {
+                session.Sensor = null;
+                session.Dispose();
+            }
+
             _sessions.Clear();
 
             _sessions.Add(new DeepCoolDisplaySession(
@@ -241,6 +247,8 @@ namespace FanControl.DeepCoolDigital
                 if (_config.VendorId != _configuredVendorId || _config.ProductId != _configuredProductId)
                 {
                     Log.Event("vendorId/productId changes require a FanControl restart; keeping the current devices.");
+                    _configuredVendorId = _config.VendorId;
+                    _configuredProductId = _config.ProductId;
                 }
 
                 if (_temperatureSensorNames == null || !_config.PreferredTemperatureSensors.SequenceEqual(_temperatureSensorNames))

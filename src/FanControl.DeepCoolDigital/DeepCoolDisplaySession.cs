@@ -144,7 +144,9 @@ namespace FanControl.DeepCoolDigital
 
             if (_settings.Mode == DisplayMode.Auto)
             {
-                if (unchecked(Environment.TickCount - _lastModeSwitch) >= _settings.AutoSwitchSeconds * 1000)
+                int elapsed = unchecked(Environment.TickCount - _lastModeSwitch);
+
+                if (DisplayPolicy.ShouldSwitchMode(elapsed, _settings.AutoSwitchSeconds))
                 {
                     _showUsage = !_showUsage;
                     _lastModeSwitch = Environment.TickCount;
@@ -155,23 +157,25 @@ namespace FanControl.DeepCoolDigital
                 _showUsage = _settings.Mode == DisplayMode.Usage;
             }
 
-            bool alarm = _settings.AlarmEnabled
-                && _definition.Capabilities.SupportsAlarm
-                && temperatureCelsius > _settings.AlarmTemperature;
-
-            DisplayField field;
-            float displayValue;
-
-            if (_showUsage)
+            if (_settings.Fahrenheit && !_definition.Capabilities.SupportsFahrenheit && !_fahrenheitWarningLogged)
             {
-                field = DisplayField.Usage;
-                displayValue = usage;
+                _fahrenheitWarningLogged = true;
+                Log.Event($"{Describe()} does not support Fahrenheit; displaying Celsius.");
             }
-            else
-            {
-                field = DisplayField.Temperature;
-                displayValue = ConvertTemperature(temperatureCelsius);
-            }
+
+            bool alarm = DisplayPolicy.IsAlarm(
+                temperatureCelsius,
+                _settings.AlarmEnabled,
+                _definition.Capabilities.SupportsAlarm,
+                _settings.AlarmTemperature);
+
+            DisplayField field = DisplayPolicy.SelectField(_showUsage);
+            float displayValue = _showUsage
+                ? usage
+                : DisplayPolicy.ConvertTemperature(
+                    temperatureCelsius,
+                    _settings.Fahrenheit,
+                    _definition.Capabilities.SupportsFahrenheit);
 
             Send(new DisplayFrame(field, displayValue, temperatureCelsius, usage, alarm));
         }
@@ -185,27 +189,6 @@ namespace FanControl.DeepCoolDigital
         private string Describe()
         {
             return $"{_definition?.Model ?? "DeepCool device"} {_vendorId:X4}:{_productId:X4}";
-        }
-
-        private float ConvertTemperature(float celsius)
-        {
-            if (!_settings.Fahrenheit)
-            {
-                return celsius;
-            }
-
-            if (!_definition.Capabilities.SupportsFahrenheit)
-            {
-                if (!_fahrenheitWarningLogged)
-                {
-                    _fahrenheitWarningLogged = true;
-                    Log.Event($"{Describe()} does not support Fahrenheit; displaying Celsius.");
-                }
-
-                return celsius;
-            }
-
-            return celsius * 9f / 5f + 32f;
         }
 
         private void Send(DisplayFrame frame)

@@ -149,6 +149,19 @@ namespace FanControl.DeepCoolDigital.Tests
         }
 
         [Test]
+        public void ApplyTransportQuirks_SeProductName_ShiftsInitializationPacket()
+        {
+            IDisplayProtocol protocol = CreateProtocol();
+            byte[] initPacket = protocol.CreateInitializationPackets()[0];
+
+            byte[] result = protocol.ApplyTransportQuirks(initPacket, "A400 DIGITAL");
+
+            Assert.That(result, Has.Length.EqualTo(64));
+            Assert.That(result[0], Is.EqualTo(0xAA));
+            Assert.That(result[63], Is.EqualTo(0));
+        }
+
+        [Test]
         public void ApplyTransportQuirks_NullProductName_ReturnsSameInstance()
         {
             IDisplayProtocol protocol = CreateProtocol();

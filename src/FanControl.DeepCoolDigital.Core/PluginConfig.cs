@@ -75,7 +75,7 @@ namespace FanControl.DeepCoolDigital.Core
         /// <summary>
         /// Gets the threshold above which the high-temperature alert is raised.
         /// </summary>
-        /// <value>The alert threshold, in degrees Celsius. The default is <c>90</c>.</value>
+        /// <value>The alert threshold, in degrees Celsius. The alert triggers at or above this value. The default is <c>90</c>.</value>
         public float AlarmTemperature { get; private set; } = 90f;
 
         /// <summary>
@@ -357,19 +357,19 @@ namespace FanControl.DeepCoolDigital.Core
             switch (key)
             {
                 case "mode":
-                    section.Mode = ParseMode(value, section.Mode ?? DisplayMode.Temperature);
+                    if (TryParseMode(value, out DisplayMode mode)) section.Mode = mode;
                     break;
                 case "autoswitchseconds":
-                    section.AutoSwitchSeconds = Math.Max(1, ParseInt(value, section.AutoSwitchSeconds ?? 5));
+                    if (TryParseInt(value, out int seconds)) section.AutoSwitchSeconds = Math.Max(1, seconds);
                     break;
                 case "alarmtemperature":
-                    section.AlarmTemperature = Math.Max(1f, ParseFloat(value, section.AlarmTemperature ?? 90f));
+                    if (TryParseFloat(value, out float threshold)) section.AlarmTemperature = Math.Max(1f, threshold);
                     break;
                 case "alarmenabled":
-                    section.AlarmEnabled = ParseBool(value, section.AlarmEnabled ?? true);
+                    if (TryParseBool(value, out bool alarmEnabled)) section.AlarmEnabled = alarmEnabled;
                     break;
                 case "fahrenheit":
-                    section.Fahrenheit = ParseBool(value, section.Fahrenheit ?? false);
+                    if (TryParseBool(value, out bool fahrenheit)) section.Fahrenheit = fahrenheit;
                     break;
             }
         }
@@ -393,12 +393,14 @@ namespace FanControl.DeepCoolDigital.Core
             vendorId = 0;
             productId = 0;
 
-            if (line.Length < 2 || line[line.Length - 1] != ']')
+            int closing = line.IndexOf(']');
+
+            if (line.Length < 2 || closing < 2)
             {
                 return false;
             }
 
-            string inner = line.Substring(1, line.Length - 2).Trim();
+            string inner = line.Substring(1, closing - 1).Trim();
             string[] parts = inner.Split(':');
 
             if (parts.Length != 3 || !parts[0].Trim().Equals("device", StringComparison.OrdinalIgnoreCase))
@@ -437,24 +439,38 @@ namespace FanControl.DeepCoolDigital.Core
 
         private static DisplayMode ParseMode(string value, DisplayMode fallback)
         {
+            return TryParseMode(value, out DisplayMode mode) ? mode : fallback;
+        }
+
+        private static bool TryParseMode(string value, out DisplayMode mode)
+        {
             switch (value.ToLowerInvariant())
             {
                 case "auto":
                 case "dynamic":
                 case "both":
-                    return DisplayMode.Auto;
+                    mode = DisplayMode.Auto;
+                    return true;
                 case "temp":
                 case "temperature":
-                    return DisplayMode.Temperature;
+                    mode = DisplayMode.Temperature;
+                    return true;
                 case "usage":
                 case "load":
-                    return DisplayMode.Usage;
+                    mode = DisplayMode.Usage;
+                    return true;
                 default:
-                    return fallback;
+                    mode = default;
+                    return false;
             }
         }
 
         private static LogLevel ParseLogLevel(string value, LogLevel fallback)
+        {
+            return TryParseLogLevel(value, out LogLevel level) ? level : fallback;
+        }
+
+        private static bool TryParseLogLevel(string value, out LogLevel level)
         {
             switch (value.ToLowerInvariant())
             {
@@ -462,43 +478,56 @@ namespace FanControl.DeepCoolDigital.Core
                 case "none":
                 case "false":
                 case "0":
-                    return LogLevel.Off;
+                    level = LogLevel.Off;
+                    return true;
                 case "events":
                 case "event":
                 case "on":
                 case "true":
                 case "1":
-                    return LogLevel.Events;
+                    level = LogLevel.Events;
+                    return true;
                 case "verbose":
                 case "debug":
-                    return LogLevel.Verbose;
+                    level = LogLevel.Verbose;
+                    return true;
                 default:
-                    return fallback;
+                    level = default;
+                    return false;
             }
         }
 
         private static int ParseInt(string value, int fallback)
         {
+            return TryParseInt(value, out int result) ? result : fallback;
+        }
+
+        private static bool TryParseInt(string value, out int result)
+        {
             if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
             {
-                return int.TryParse(value.Substring(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out int hex)
-                    ? hex
-                    : fallback;
+                return int.TryParse(value.Substring(2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out result);
             }
 
-            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int result)
-                ? result
-                : fallback;
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out result);
         }
 
         private static float ParseFloat(string value, float fallback)
         {
-            return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float result)
-                ? result
-                : fallback;
+            return TryParseFloat(value, out float result) ? result : fallback;
+        }
+
+        private static bool TryParseFloat(string value, out float result)
+        {
+            return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result);
         }
 
         private static bool ParseBool(string value, bool fallback)
+        {
+            return TryParseBool(value, out bool result) ? result : fallback;
+        }
+
+        private static bool TryParseBool(string value, out bool result)
         {
             switch (value.ToLowerInvariant())
             {
@@ -506,14 +535,17 @@ namespace FanControl.DeepCoolDigital.Core
                 case "true":
                 case "yes":
                 case "on":
+                    result = true;
                     return true;
                 case "0":
                 case "false":
                 case "no":
                 case "off":
-                    return false;
+                    result = false;
+                    return true;
                 default:
-                    return fallback;
+                    result = false;
+                    return false;
             }
         }
 
