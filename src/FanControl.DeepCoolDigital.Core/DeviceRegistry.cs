@@ -30,11 +30,35 @@ namespace FanControl.DeepCoolDigital.Core
                 supportsAlarm: true,
                 supportsFahrenheit: false,
                 defaultAlarmTemperatureCelsius: 90f),
-            () => new AgProtocol());
+            _ => new AgProtocol());
+
+        /// <summary>
+        /// The definition of the AK400 DIGITAL.
+        /// </summary>
+        public static readonly DeviceDefinition Ak400Digital = CreateAkDefinition(0x0001, "DeepCool AK400 DIGITAL");
+
+        /// <summary>
+        /// The definition of the AK620 DIGITAL.
+        /// </summary>
+        public static readonly DeviceDefinition Ak620Digital = CreateAkDefinition(0x0002, "DeepCool AK620 DIGITAL");
+
+        /// <summary>
+        /// The definition of the AK500 DIGITAL.
+        /// </summary>
+        public static readonly DeviceDefinition Ak500Digital = CreateAkDefinition(0x0003, "DeepCool AK500 DIGITAL");
+
+        /// <summary>
+        /// The definition of the AK500S DIGITAL.
+        /// </summary>
+        public static readonly DeviceDefinition Ak500SDigital = CreateAkDefinition(0x0004, "DeepCool AK500S DIGITAL");
 
         private static readonly DeviceDefinition[] Definitions =
         {
-            AgDigital
+            AgDigital,
+            Ak400Digital,
+            Ak620Digital,
+            Ak500Digital,
+            Ak500SDigital
         };
 
         private static readonly IReadOnlyList<DeviceDefinition> ReadOnlyDefinitions = System.Array.AsReadOnly(Definitions);
@@ -92,6 +116,21 @@ namespace FanControl.DeepCoolDigital.Core
             }
 
             return null;
+        }
+
+        private static DeviceDefinition CreateAkDefinition(int productId, string model)
+        {
+            return new DeviceDefinition(
+                DeepCoolVendorId,
+                productId,
+                model,
+                new DeviceCapabilities(
+                    supportsTemperature: true,
+                    supportsUsage: true,
+                    supportsAlarm: true,
+                    supportsFahrenheit: true,
+                    defaultAlarmTemperatureCelsius: 90f),
+                options => new AkProtocol(options));
         }
     }
 }

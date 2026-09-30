@@ -11,6 +11,9 @@ namespace FanControl.DeepCoolDigital.Tests
     [Category("Registry")]
     public class DeviceRegistryTests
     {
+        private static readonly DeviceOptions CelsiusOptions = new DeviceOptions(false);
+        private static readonly DeviceOptions FahrenheitOptions = new DeviceOptions(true);
+
         [Test]
         public void Find_AgDigitalIdentity_ReturnsDefinitionWithExpectedCapabilities()
         {
@@ -23,6 +26,20 @@ namespace FanControl.DeepCoolDigital.Tests
             Assert.That(definition.Capabilities.SupportsAlarm, Is.True);
             Assert.That(definition.Capabilities.SupportsFahrenheit, Is.False);
             Assert.That(definition.Capabilities.DefaultAlarmTemperatureCelsius, Is.EqualTo(90f));
+        }
+
+        [TestCase(0x0001, "DeepCool AK400 DIGITAL")]
+        [TestCase(0x0002, "DeepCool AK620 DIGITAL")]
+        [TestCase(0x0003, "DeepCool AK500 DIGITAL")]
+        [TestCase(0x0004, "DeepCool AK500S DIGITAL")]
+        public void Find_AkDigitalIdentities_ReturnDefinitionsWithFahrenheitSupport(int productId, string model)
+        {
+            DeviceDefinition definition = DeviceRegistry.Find(0x3633, productId);
+
+            Assert.That(definition, Is.Not.Null);
+            Assert.That(definition.Model, Is.EqualTo(model));
+            Assert.That(definition.Capabilities.SupportsFahrenheit, Is.True);
+            Assert.That(definition.Capabilities.SupportsAlarm, Is.True);
         }
 
         [Test]
@@ -40,16 +57,28 @@ namespace FanControl.DeepCoolDigital.Tests
         [Test]
         public void AgDigital_CreateProtocol_ReturnsAgProtocol()
         {
-            Assert.That(DeviceRegistry.AgDigital.CreateProtocol(), Is.InstanceOf<AgProtocol>());
+            Assert.That(DeviceRegistry.AgDigital.CreateProtocol(CelsiusOptions), Is.InstanceOf<AgProtocol>());
         }
 
         [Test]
-        public void AgDigital_CreateProtocol_ReturnsNewInstanceEachTime()
+        public void AkDigital_CreateProtocol_ReturnsAkProtocol()
         {
-            IDisplayProtocol first = DeviceRegistry.AgDigital.CreateProtocol();
-            IDisplayProtocol second = DeviceRegistry.AgDigital.CreateProtocol();
+            Assert.That(DeviceRegistry.Ak620Digital.CreateProtocol(FahrenheitOptions), Is.InstanceOf<AkProtocol>());
+        }
+
+        [Test]
+        public void CreateProtocol_ReturnsNewInstanceEachTime()
+        {
+            IDisplayProtocol first = DeviceRegistry.AgDigital.CreateProtocol(CelsiusOptions);
+            IDisplayProtocol second = DeviceRegistry.AgDigital.CreateProtocol(CelsiusOptions);
 
             Assert.That(first, Is.Not.SameAs(second));
+        }
+
+        [Test]
+        public void CreateProtocol_NullOptions_ThrowsArgumentNullException()
+        {
+            Assert.Throws<System.ArgumentNullException>(() => DeviceRegistry.AgDigital.CreateProtocol(null));
         }
 
         [Test]

@@ -5,29 +5,29 @@ using System.Linq;
 using System.Reflection;
 using FanControl.DeepCoolDigital.Core;
 using FanControl.Plugins;
+using HidSharp;
 
 namespace FanControl.DeepCoolDigital
 {
     /// <summary>
-    /// FanControl plugin that drives the status display of DeepCool DIGITAL air coolers with live CPU data.
+    /// FanControl plugin that drives the status displays of DeepCool DIGITAL coolers with live CPU data.
     /// </summary>
     /// <remarks>
     /// The plugin reads the CPU temperature through LibreHardwareMonitor and the CPU usage through the
-    /// Windows kernel, then streams the selected value to the cooler display. All errors are contained:
-    /// the plugin degrades gracefully and never lets an exception escape into FanControl.
+    /// Windows kernel once per cycle, then streams the configured value to every supported display found
+    /// on the system. All errors are contained: the plugin degrades gracefully and never lets an exception
+    /// escape into FanControl.
     /// </remarks>
     public class DeepCoolDigitalPlugin : IPlugin2
     {
         private readonly PluginConfig _config = PluginConfig.Load(ConfigFilePath);
+        private readonly List<DeepCoolDisplaySession> _sessions = new List<DeepCoolDisplaySession>();
+        private readonly List<DeepCoolDisplaySensor> _sensors = new List<DeepCoolDisplaySensor>();
         private CpuTemperatureSource _temperatureSource;
         private CpuUsage _cpuUsage;
-        private DeepCoolDisplayDevice _display;
-        private DeepCoolDisplaySensor _temperatureSensor;
         private IReadOnlyList<string> _temperatureSensorNames;
-        private int _vendorId;
-        private int _productId;
-        private int _lastModeSwitch;
-        private bool _showUsage;
+        private int _configuredVendorId;
+        private int _configuredProductId;
 
         /// <summary>
         /// Gets the name shown in the FanControl UI.
@@ -72,13 +72,18 @@ namespace FanControl.DeepCoolDigital
                     return;
                 }
 
-                if (_temperatureSensor != null)
+                if (_sensors.Count > 0)
                 {
                     return;
                 }
 
-                _temperatureSensor = new DeepCoolDisplaySensor();
-                container.TempSensors.Add(_temperatureSensor);
+                foreach (DeepCoolDisplaySession session in _sessions)
+                {
+                    var sensor = new DeepCoolDisplaySensor(session.SensorId, session.SensorName);
+                    session.Sensor = sensor;
+                    _sensors.Add(sensor);
+                    container.TempSensors.Add(sensor);
+                }
             }
             catch (Exception ex)
             {
@@ -106,14 +111,20 @@ namespace FanControl.DeepCoolDigital
             {
                 Log.Event("Close");
 
-                if (_temperatureSensor != null)
+                foreach (DeepCoolDisplaySensor sensor in _sensors)
                 {
-                    _temperatureSensor.Value = null;
-                    _temperatureSensor = null;
+                    sensor.Value = null;
                 }
 
-                _display?.Dispose();
-                _display = null;
+                _sensors.Clear();
+
+                foreach (DeepCoolDisplaySession session in _sessions)
+                {
+                    session.Sensor = null;
+                    session.Dispose();
+                }
+
+                _sessions.Clear();
 
                 _temperatureSource?.Dispose();
                 _temperatureSource = null;
@@ -171,34 +182,73 @@ namespace FanControl.DeepCoolDigital
             }
 
             _cpuUsage = new CpuUsage();
-            _display = new DeepCoolDisplayDevice(_config);
-            _vendorId = _config.VendorId;
-            _productId = _config.ProductId;
             _temperatureSensorNames = _config.PreferredTemperatureSensors;
-            _lastModeSwitch = Environment.TickCount;
-            _showUsage = _config.Mode == DisplayMode.Usage;
+            _configuredVendorId = _config.VendorId;
+            _configuredProductId = _config.ProductId;
+
+            CreateSessions();
+        }
+
+        private void CreateSessions()
+        {
+            foreach (DeepCoolDisplaySession session in _sessions)
+            {
+                session.Sensor = null;
+                session.Dispose();
+            }
+
+            _sessions.Clear();
+
+            _sessions.Add(new DeepCoolDisplaySession(
+                _config.VendorId,
+                _config.ProductId,
+                _config.ForDevice(_config.VendorId, _config.ProductId),
+                isPrimary: true));
+
+            try
+            {
+                foreach (HidDevice device in DeviceList.Local.GetHidDevices())
+                {
+                    if (DeviceRegistry.Find(device.VendorID, device.ProductID) == null)
+                    {
+                        continue;
+                    }
+
+                    bool alreadyTracked = _sessions.Any(
+                        session => session.VendorId == device.VendorID && session.ProductId == device.ProductID);
+
+                    if (alreadyTracked)
+                    {
+                        continue;
+                    }
+
+                    _sessions.Add(new DeepCoolDisplaySession(
+                        device.VendorID,
+                        device.ProductID,
+                        _config.ForDevice(device.VendorID, device.ProductID),
+                        isPrimary: false));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Event("Device discovery failed: " + ex.Message);
+            }
+
+            Log.Event($"Tracking {_sessions.Count} display session(s).");
         }
 
         private void UpdateCore()
         {
-            if (_display == null)
-            {
-                return;
-            }
-
             if (_config.TryReload())
             {
                 Log.Init(_config);
-                Log.Event($"Config reloaded: mode={_config.Mode}, autoSwitchSeconds={_config.AutoSwitchSeconds}, alarmTemperature={_config.AlarmTemperature}");
-                _lastModeSwitch = Environment.TickCount;
-                _showUsage = _config.Mode == DisplayMode.Usage;
+                Log.Event($"Config reloaded: mode={_config.Mode}, autoSwitchSeconds={_config.AutoSwitchSeconds}, alarmTemperature={_config.AlarmTemperature}, alarmEnabled={_config.AlarmEnabled}, fahrenheit={_config.Fahrenheit}");
 
-                if (_config.VendorId != _vendorId || _config.ProductId != _productId)
+                if (_config.VendorId != _configuredVendorId || _config.ProductId != _configuredProductId)
                 {
-                    _vendorId = _config.VendorId;
-                    _productId = _config.ProductId;
-                    _display?.Dispose();
-                    _display = new DeepCoolDisplayDevice(_config);
+                    Log.Event("vendorId/productId changes require a FanControl restart; keeping the current devices.");
+                    _configuredVendorId = _config.VendorId;
+                    _configuredProductId = _config.ProductId;
                 }
 
                 if (_temperatureSensorNames == null || !_config.PreferredTemperatureSensors.SequenceEqual(_temperatureSensorNames))
@@ -216,41 +266,30 @@ namespace FanControl.DeepCoolDigital
                         _temperatureSource = null;
                     }
                 }
+
+                foreach (DeepCoolDisplaySession session in _sessions)
+                {
+                    session.ApplySettings(_config.ForDevice(session.VendorId, session.ProductId));
+                }
             }
 
             float? temperature = _temperatureSource?.Read();
-            if (_temperatureSensor != null)
-            {
-                _temperatureSensor.Value = temperature;
-            }
 
             if (temperature == null)
             {
+                foreach (DeepCoolDisplaySensor sensor in _sensors)
+                {
+                    sensor.Value = null;
+                }
+
                 return;
             }
 
             float usage = _cpuUsage.Read();
 
-            if (_config.Mode == DisplayMode.Auto)
+            foreach (DeepCoolDisplaySession session in _sessions)
             {
-                if (unchecked(Environment.TickCount - _lastModeSwitch) >= _config.AutoSwitchSeconds * 1000)
-                {
-                    _showUsage = !_showUsage;
-                    _lastModeSwitch = Environment.TickCount;
-                }
-            }
-            else
-            {
-                _showUsage = _config.Mode == DisplayMode.Usage;
-            }
-
-            if (_showUsage)
-            {
-                _display.SendUsage(usage, temperature.Value);
-            }
-            else
-            {
-                _display.SendTemperature(temperature.Value);
+                session.Update(temperature.Value, usage);
             }
         }
     }

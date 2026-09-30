@@ -19,8 +19,7 @@ namespace FanControl.DeepCoolDigital.Core.Protocols
         /// Gets a value indicating whether packets start with a HID report id byte.
         /// </summary>
         /// <value>
-        /// <see langword="true" /> when the first byte is a report id; otherwise, <see langword="false" />.
-        /// Some "SE" device variants expect the payload without the report id.
+        /// <see langword="true" /> when the first byte of the packet is a report id; otherwise, <see langword="false" />.
         /// </value>
         bool IncludesReportId { get; }
 
@@ -31,12 +30,22 @@ namespace FanControl.DeepCoolDigital.Core.Protocols
         byte[][] CreateInitializationPackets();
 
         /// <summary>
-        /// Builds a display packet for the specified field and value.
+        /// Builds a display packet for the specified system state.
         /// </summary>
-        /// <param name="field">One of the enumeration values that specifies which value is being displayed.</param>
-        /// <param name="value">The value to display.</param>
-        /// <param name="alarm"><see langword="true" /> to raise the high-temperature alert; otherwise, <see langword="false" />.</param>
-        /// <returns>The packet bytes to write to the device.</returns>
-        byte[] BuildPacket(DisplayField field, float value, bool alarm);
+        /// <param name="frame">The state to render.</param>
+        /// <returns>The packet bytes to write to the device, before <see cref="ApplyTransportQuirks"/>.</returns>
+        byte[] BuildPacket(DisplayFrame frame);
+
+        /// <summary>
+        /// Adjusts a packet for the quirks of a specific device variant.
+        /// </summary>
+        /// <param name="packet">A packet produced by <see cref="BuildPacket"/> or <see cref="CreateInitializationPackets"/>.</param>
+        /// <param name="productName">The HID product string of the connected device, when available.</param>
+        /// <returns>The bytes that should actually be written to the device.</returns>
+        /// <remarks>
+        /// For example, "SE" variants of the AK series do not expect the report id byte, so the
+        /// payload is shifted one byte to the left.
+        /// </remarks>
+        byte[] ApplyTransportQuirks(byte[] packet, string productName);
     }
 }

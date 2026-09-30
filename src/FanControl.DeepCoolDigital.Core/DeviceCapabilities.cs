@@ -54,7 +54,7 @@ namespace FanControl.DeepCoolDigital.Core
         /// <summary>
         /// Gets the default alert threshold, in degrees Celsius.
         /// </summary>
-        /// <value>The temperature above which the alert is raised.</value>
+        /// <value>The temperature at or above which the alert is raised.</value>
         public float DefaultAlarmTemperatureCelsius { get; }
     }
 }

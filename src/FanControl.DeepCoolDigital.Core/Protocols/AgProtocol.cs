@@ -34,31 +34,21 @@ namespace FanControl.DeepCoolDigital.Core.Protocols
         }
 
         /// <inheritdoc />
-        public byte[] BuildPacket(DisplayField field, float value, bool alarm)
+        public byte[] BuildPacket(DisplayFrame frame)
         {
             var packet = new byte[PacketLength];
-
-            int digits;
-            if (float.IsNaN(value) || value <= 0f)
-            {
-                digits = 0;
-            }
-            else if (value >= 100f)
-            {
-                digits = 100;
-            }
-            else
-            {
-                digits = (int)value;
-            }
-
             packet[0] = ReportId;
-            packet[1] = field == DisplayField.Temperature ? TemperatureStatus : UsageStatus;
+            packet[1] = frame.Field == DisplayField.Temperature ? TemperatureStatus : UsageStatus;
             packet[2] = 0;
-            packet[3] = (byte)(digits < 100 ? digits % 100 / 10 : 9);
-            packet[4] = (byte)(digits < 100 ? digits % 10 : 9);
-            packet[5] = (byte)(alarm ? 1 : 0);
+            DigitPacketBuilder.WriteDigits(packet, 3, 2, DigitPacketBuilder.ClampDigits(frame.Value, 2));
+            packet[5] = (byte)(frame.Alarm ? 1 : 0);
 
+            return packet;
+        }
+
+        /// <inheritdoc />
+        public byte[] ApplyTransportQuirks(byte[] packet, string productName)
+        {
             return packet;
         }
     }

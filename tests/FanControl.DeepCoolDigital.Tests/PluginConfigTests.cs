@@ -37,10 +37,13 @@ namespace FanControl.DeepCoolDigital.Tests
             Assert.That(config.Mode, Is.EqualTo(DisplayMode.Temperature));
             Assert.That(config.AutoSwitchSeconds, Is.EqualTo(5));
             Assert.That(config.AlarmTemperature, Is.EqualTo(90f));
+            Assert.That(config.AlarmEnabled, Is.True);
+            Assert.That(config.Fahrenheit, Is.False);
             Assert.That(config.VendorId, Is.EqualTo(0x3633));
             Assert.That(config.ProductId, Is.EqualTo(0x0008));
             Assert.That(config.LogLevel, Is.EqualTo(LogLevel.Off));
             Assert.That(config.PreferredTemperatureSensors, Is.EqualTo(PluginConfig.DefaultPreferredTemperatureSensors));
+            Assert.That(config.DeviceOverrides, Is.Empty);
             Assert.That(config.FilePath, Is.EqualTo(_path));
         }
 
@@ -140,6 +143,119 @@ namespace FanControl.DeepCoolDigital.Tests
         public void Load_NullPath_ThrowsArgumentException()
         {
             Assert.Throws<ArgumentException>(() => PluginConfig.Load(null));
+        }
+
+        [Test]
+        public void Load_GlobalAlarmAndUnitKeys_ParseValues()
+        {
+            PluginConfig config = LoadWith("alarmEnabled=false\nfahrenheit=true");
+
+            Assert.That(config.AlarmEnabled, Is.False);
+            Assert.That(config.Fahrenheit, Is.True);
+        }
+
+        [Test]
+        public void ForDevice_NoOverride_ReturnsGlobals()
+        {
+            PluginConfig config = LoadWith("mode=usage\nalarmEnabled=false");
+
+            DeviceSettings settings = config.ForDevice(0x3633, 0x0002);
+
+            Assert.That(settings.Mode, Is.EqualTo(DisplayMode.Usage));
+            Assert.That(settings.AlarmEnabled, Is.False);
+            Assert.That(settings.AlarmTemperature, Is.EqualTo(90f));
+            Assert.That(settings.Fahrenheit, Is.False);
+            Assert.That(settings.VendorId, Is.EqualTo(0x3633));
+            Assert.That(settings.ProductId, Is.EqualTo(0x0002));
+        }
+
+        [Test]
+        public void ForDevice_DeviceSection_MergesOverridesWithGlobals()
+        {
+            PluginConfig config = LoadWith(
+                "mode=temp\nalarmTemperature=90\n\n[device:0x3633:0x0002]\nmode=usage\nalarmTemperature=85\n");
+
+            DeviceSettings overridden = config.ForDevice(0x3633, 0x0002);
+            DeviceSettings untouched = config.ForDevice(0x3633, 0x0008);
+
+            Assert.That(overridden.Mode, Is.EqualTo(DisplayMode.Usage));
+            Assert.That(overridden.AlarmTemperature, Is.EqualTo(85f));
+            Assert.That(untouched.Mode, Is.EqualTo(DisplayMode.Temperature));
+            Assert.That(untouched.AlarmTemperature, Is.EqualTo(90f));
+        }
+
+        [Test]
+        public void ForDevice_PartialSection_InheritsRemainingGlobals()
+        {
+            PluginConfig config = LoadWith("fahrenheit=true\n\n[device:0x3633:0x0002]\nmode=dynamic\n");
+
+            DeviceSettings settings = config.ForDevice(0x3633, 0x0002);
+
+            Assert.That(settings.Mode, Is.EqualTo(DisplayMode.Auto));
+            Assert.That(settings.Fahrenheit, Is.True);
+            Assert.That(settings.AlarmEnabled, Is.True);
+        }
+
+        [Test]
+        public void ForDevice_DecimalSectionIds_AreParsed()
+        {
+            PluginConfig config = LoadWith("[device:13875:2]\nmode=usage\n");
+
+            Assert.That(config.ForDevice(13875, 2).Mode, Is.EqualTo(DisplayMode.Usage));
+        }
+
+        [Test]
+        public void Load_MalformedSection_SkipsItsKeys()
+        {
+            PluginConfig config = LoadWith("[device:zzz:2]\nmode=usage\n");
+
+            Assert.That(config.Mode, Is.EqualTo(DisplayMode.Temperature));
+            Assert.That(config.DeviceOverrides, Is.Empty);
+        }
+
+        [Test]
+        public void Load_SectionKeys_ArePartOfTheOverrideList()
+        {
+            PluginConfig config = LoadWith("[device:0x3633:0x0001]\nalarmEnabled=false\nfahrenheit=true\n");
+
+            Assert.That(config.DeviceOverrides, Has.Count.EqualTo(1));
+            Assert.That(config.DeviceOverrides[0].VendorId, Is.EqualTo(0x3633));
+            Assert.That(config.DeviceOverrides[0].ProductId, Is.EqualTo(0x0001));
+            Assert.That(config.DeviceOverrides[0].AlarmEnabled, Is.False);
+            Assert.That(config.DeviceOverrides[0].Fahrenheit, Is.True);
+            Assert.That(config.DeviceOverrides[0].Mode, Is.Null);
+        }
+
+        [Test]
+        public void Load_DeviceSectionInvalidValue_InheritsGlobal()
+        {
+            PluginConfig config = LoadWith("mode=usage\n\n[device:0x3633:0x0002]\nmode=banana\nalarmTemperature=abc\n");
+
+            DeviceSettings settings = config.ForDevice(0x3633, 0x0002);
+
+            Assert.That(settings.Mode, Is.EqualTo(DisplayMode.Usage));
+            Assert.That(settings.AlarmTemperature, Is.EqualTo(90f));
+            Assert.That(config.DeviceOverrides[0].Mode, Is.Null);
+        }
+
+        [Test]
+        public void Load_SectionHeaderWithTrailingComment_IsParsed()
+        {
+            PluginConfig config = LoadWith("[device:0x3633:0x0002] # AK620 DIGITAL\nmode=usage\n");
+
+            Assert.That(config.ForDevice(0x3633, 0x0002).Mode, Is.EqualTo(DisplayMode.Usage));
+        }
+
+        [Test]
+        public void TryReload_SectionChange_AppliesNewOverrides()
+        {
+            PluginConfig config = LoadWith("mode=temp");
+
+            File.WriteAllText(_path, "mode=temp\n\n[device:0x3633:0x0002]\nmode=usage\n");
+            File.SetLastWriteTimeUtc(_path, DateTime.UtcNow.AddSeconds(10));
+
+            Assert.That(config.TryReload(), Is.True);
+            Assert.That(config.ForDevice(0x3633, 0x0002).Mode, Is.EqualTo(DisplayMode.Usage));
         }
 
         [Test]
