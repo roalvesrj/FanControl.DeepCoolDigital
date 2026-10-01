@@ -13,19 +13,26 @@ namespace FanControl.DeepCoolDigital
     /// FanControl plugin that drives the status displays of DeepCool DIGITAL coolers with live CPU data.
     /// </summary>
     /// <remarks>
-    /// The plugin reads the CPU temperature through LibreHardwareMonitor and the CPU usage through the
-    /// Windows kernel once per cycle, then streams the configured value to every supported display found
-    /// on the system. All errors are contained: the plugin degrades gracefully and never lets an exception
-    /// escape into FanControl.
+    /// CPU temperature and usage are read from FanControl's own sensors through its IPC channel when
+    /// available (avoiding a second LibreHardwareMonitor instance), falling back to a local
+    /// LibreHardwareMonitor instance and Windows kernel counters. The selected readings are streamed to
+    /// every supported display found on the system. All errors are contained: the plugin degrades
+    /// gracefully and never lets an exception escape into FanControl.
     /// </remarks>
     public class DeepCoolDigitalPlugin : IPlugin2
     {
+        private const int IpcRetryDelayMilliseconds = 30000;
+        private const int RetireLocalSourceAfterSuccesses = 30;
+
         private readonly PluginConfig _config = PluginConfig.Load(ConfigFilePath);
         private readonly List<DeepCoolDisplaySession> _sessions = new List<DeepCoolDisplaySession>();
         private readonly List<DeepCoolDisplaySensor> _sensors = new List<DeepCoolDisplaySensor>();
-        private CpuTemperatureSource _temperatureSource;
-        private CpuUsage _cpuUsage;
+        private SensorSourceManager _sensorManager;
+        private FanControlIpcSource _ipcSource;
+        private LocalSensorSource _localSource;
         private IReadOnlyList<string> _temperatureSensorNames;
+        private SensorSource _configuredSource;
+        private string _configuredUsageSensor;
         private int _configuredVendorId;
         private int _configuredProductId;
 
@@ -126,10 +133,13 @@ namespace FanControl.DeepCoolDigital
 
                 _sessions.Clear();
 
-                _temperatureSource?.Dispose();
-                _temperatureSource = null;
+                _sensorManager = null;
 
-                _cpuUsage = null;
+                _ipcSource?.Dispose();
+                _ipcSource = null;
+
+                _localSource?.Dispose();
+                _localSource = null;
             }
             catch (Exception ex)
             {
@@ -172,21 +182,63 @@ namespace FanControl.DeepCoolDigital
             Log.Init(_config);
             Log.Event($"Plugin v{PluginVersion} starting (FanControl v{HostVersion}, config={_config.FilePath})");
 
-            try
-            {
-                _temperatureSource = new CpuTemperatureSource(_config.PreferredTemperatureSensors);
-            }
-            catch (Exception ex)
-            {
-                Log.Event("CPU temperature source unavailable: " + ex.Message);
-            }
-
-            _cpuUsage = new CpuUsage();
             _temperatureSensorNames = _config.PreferredTemperatureSensors;
             _configuredVendorId = _config.VendorId;
             _configuredProductId = _config.ProductId;
+            _configuredSource = _config.Source;
+            _configuredUsageSensor = _config.UsageSensor;
+
+            ConfigureSensorSources();
 
             CreateSessions();
+        }
+
+        private void ConfigureSensorSources()
+        {
+            _sensorManager = null;
+
+            _ipcSource?.Dispose();
+            _ipcSource = null;
+
+            _localSource?.Dispose();
+            _localSource = null;
+
+            _ipcSource = _config.Source == SensorSource.Local
+                ? null
+                : new FanControlIpcSource(_config.PreferredTemperatureSensors, _config.UsageSensor);
+
+            _localSource = _config.Source == SensorSource.FanControl
+                ? null
+                : new LocalSensorSource(_config.PreferredTemperatureSensors);
+
+            _sensorManager = new SensorSourceManager(
+                _config.Source,
+                _ipcSource,
+                _localSource,
+                new RetryBackoff(IpcRetryDelayMilliseconds),
+                RetireLocalSourceAfterSuccesses,
+                Log.Event,
+                description => Log.Event("Sensor source: " + description),
+                RetireLocalSource);
+
+            if (_config.Source != SensorSource.Local)
+            {
+                string mode = _config.Source == SensorSource.FanControl
+                    ? "FanControl IPC only"
+                    : "auto (FanControl IPC with local fallback)";
+                Log.Event("Sensor source mode: " + mode);
+            }
+        }
+
+        private void RetireLocalSource()
+        {
+            if (_localSource == null)
+            {
+                return;
+            }
+
+            _localSource.Dispose();
+            Log.Event("Local sensor source released; FanControl IPC is healthy.");
         }
 
         private void CreateSessions()
@@ -242,7 +294,7 @@ namespace FanControl.DeepCoolDigital
             if (_config.TryReload())
             {
                 Log.Init(_config);
-                Log.Event($"Config reloaded: mode={_config.Mode}, autoSwitchSeconds={_config.AutoSwitchSeconds}, alarmTemperature={_config.AlarmTemperature}, alarmEnabled={_config.AlarmEnabled}, fahrenheit={_config.Fahrenheit}");
+                Log.Event($"Config reloaded: mode={_config.Mode}, autoSwitchSeconds={_config.AutoSwitchSeconds}, alarmTemperature={_config.AlarmTemperature}, alarmEnabled={_config.AlarmEnabled}, fahrenheit={_config.Fahrenheit}, source={_config.Source}");
 
                 if (_config.VendorId != _configuredVendorId || _config.ProductId != _configuredProductId)
                 {
@@ -251,21 +303,7 @@ namespace FanControl.DeepCoolDigital
                     _configuredProductId = _config.ProductId;
                 }
 
-                if (_temperatureSensorNames == null || !_config.PreferredTemperatureSensors.SequenceEqual(_temperatureSensorNames))
-                {
-                    _temperatureSensorNames = _config.PreferredTemperatureSensors;
-                    _temperatureSource?.Dispose();
-
-                    try
-                    {
-                        _temperatureSource = new CpuTemperatureSource(_temperatureSensorNames);
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Event("CPU temperature source unavailable after reload: " + ex.Message);
-                        _temperatureSource = null;
-                    }
-                }
+                ApplyReloadedSensorConfiguration();
 
                 foreach (DeepCoolDisplaySession session in _sessions)
                 {
@@ -273,9 +311,8 @@ namespace FanControl.DeepCoolDigital
                 }
             }
 
-            float? temperature = _temperatureSource?.Read();
-
-            if (temperature == null)
+            if (_sensorManager == null
+                || !_sensorManager.TryRead(Environment.TickCount, out float temperature, out float usage))
             {
                 foreach (DeepCoolDisplaySensor sensor in _sensors)
                 {
@@ -285,12 +322,30 @@ namespace FanControl.DeepCoolDigital
                 return;
             }
 
-            float usage = _cpuUsage.Read();
-
             foreach (DeepCoolDisplaySession session in _sessions)
             {
-                session.Update(temperature.Value, usage);
+                session.Update(temperature, usage);
             }
+        }
+
+        private void ApplyReloadedSensorConfiguration()
+        {
+            bool changed =
+                _temperatureSensorNames == null
+                || !_config.PreferredTemperatureSensors.SequenceEqual(_temperatureSensorNames)
+                || !string.Equals(_config.UsageSensor, _configuredUsageSensor, StringComparison.OrdinalIgnoreCase)
+                || _config.Source != _configuredSource;
+
+            if (!changed)
+            {
+                return;
+            }
+
+            _temperatureSensorNames = _config.PreferredTemperatureSensors;
+            _configuredUsageSensor = _config.UsageSensor;
+            _configuredSource = _config.Source;
+
+            ConfigureSensorSources();
         }
     }
 }

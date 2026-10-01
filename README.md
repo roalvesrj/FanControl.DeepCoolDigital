@@ -30,8 +30,7 @@ The display can be configured to show:
 
 ## Features
 
-- CPU temperature read through **LibreHardwareMonitor** — the same sensor backend FanControl already ships. No second monitoring tool (HWInfo etc.), no extra driver, no extra service.
-- CPU usage sampled straight from the Windows kernel (`GetSystemTimes`).
+- Reads CPU temperature and usage **from FanControl's own sensors over its IPC channel** when available — while the channel is healthy there is no second LibreHardwareMonitor instance, no extra driver and no extra service. Falls back automatically to a local LibreHardwareMonitor instance and Windows kernel counters when the channel is unavailable, and releases that fallback again once the IPC has been healthy for ~30 seconds.
 - Registers a **`DeepCool Display CPU Temp`** sensor inside FanControl, usable in any fan curve.
 - **Multiple displays at once**: every supported DeepCool DIGITAL cooler found on the system is driven independently, with optional per-device settings.
 - High-temperature alert on the cooler, matching DeepCool Hub ("exceeds 90 °C" by default), toggleable per device.
@@ -92,6 +91,8 @@ All settings live in `DeepCoolDigital.ini`, next to the plugin dll (`Plugins\Dee
 | `alarmTemperature` | `90` | The cooler's high-temperature alert is triggered when the temperature **reaches or exceeds** this value (°C) |
 | `alarmEnabled` | `true` | Enables the high-temperature alert (DeepCool Hub "Warning Control") |
 | `fahrenheit` | `false` | Shows temperatures in °F on devices that support it (e.g. the AK series); ignored elsewhere |
+| `sensorSource` | `auto` | Where readings come from: `auto` (FanControl IPC with local fallback), `fancontrol` (IPC only) or `local` (LibreHardwareMonitor + kernel only) |
+| `usageSensor` | `CPU Total` | Name or identifier of the FanControl usage sensor used for the display (e.g. `CPU Total` or `/amdcpu/0/load/0`) |
 | `vendorId` | `0x3633` | USB vendor id of the primary display target |
 | `productId` | `0x0008` | USB product id of the primary display target |
 | `logLevel` | `off` | Log verbosity: `off`, `events` (connections, config reloads, errors) or `verbose` (adds diagnostic details such as discovered sensors). The legacy `log=true` maps to `events` |
@@ -152,8 +153,7 @@ The display is a single HID device; if DeepCool Hub runs at the same time as thi
 
 The plugin implements `IPlugin2` and runs inside the FanControl process:
 
-- **CPU temperature** — a second `Computer` instance of `LibreHardwareMonitorLib` (CPU only) is created in-process and reuses the PawnIO/WinRing0 driver FanControl already loaded. Sensor priority: `CPU Package` (Intel) → `Core (Tctl/Tdie)` / `Core (Tctl)` / `Core (Tdie)` (AMD) → highest CPU temperature as fallback.
-- **CPU usage** — `GetSystemTimes` deltas between two plugin update cycles (Windows kernel counters, same math as Task Manager).
+- **Sensors** — by default the plugin reads FanControl's own sensors through its named-pipe IPC channel (`SensorsRPC.GetAllSensors` / `ReadSensorValues`), so the values shown on the cooler are exactly what FanControl already knows. Temperature candidates are narrowed to CPU sensors (LibreHardwareMonitor `/amdcpu` / `/intelcpu` identifiers) so a GPU hot spot can never be mistaken for the CPU, with priority `CPU Package` (Intel) → `Core (Tctl/Tdie)` / `Core (Tctl)` / `Core (Tdie)` (AMD) → highest CPU temperature; usage defaults to `CPU Total`. If the channel is unavailable, it falls back to a local CPU-only `LibreHardwareMonitor` instance (reusing the loaded PawnIO/WinRing0 driver) plus `GetSystemTimes` kernel counters, retries the IPC every 30 seconds and releases the local instance again after ~30 s of healthy IPC. `sensorSource` can pin either behavior.
 - **Devices** — every supported display found at startup gets its own session (protocol + HID stream + settings) and is driven at every FanControl update cycle (≈1 Hz). Failures and reconnects are isolated per device.
 - **Protocols** — each device family has its own packet builder in the core, covered by byte-level tests. The tested AG family writes a 64-byte report to VID `0x3633`, PID `0x0008`:
 
@@ -190,6 +190,9 @@ Make sure all files from the release are directly inside the `Plugins` folder, t
 **CPU temperature not available**
 Update FanControl to a recent version; the plugin relies on LibreHardwareMonitor's driver (PawnIO on V238+) being functional. If FanControl itself cannot see CPU temperatures, the plugin can't either.
 
+**The log says the sensor source fell back to local**
+FanControl's IPC channel is a named pipe served by FanControl; if it is unavailable (older build, channel changed), the plugin transparently falls back to its local sensor source and retries the IPC every 30 seconds. Set `logLevel=events` to see which source is active.
+
 **FanControl (net 4.8 build) on Windows 7/8?**
 Not supported. Windows 10/11 only.
 
@@ -199,11 +202,12 @@ A standalone CLI that writes directly to the display, no FanControl required. Gr
 
 ```text
 DeepCoolDigitalProbe list
+DeepCoolDigitalProbe sensors [--filter TEXT]
 DeepCoolDigitalProbe temp  42 --seconds 10
 DeepCoolDigitalProbe usage 37 --seconds 10
 ```
 
-Options: `--seconds N` (duration, default 10) and `--interval MS` (write interval, default 1000).
+Options: `--seconds N` (duration, default 10) and `--interval MS` (write interval, default 1000). The `sensors` command lists FanControl's sensors over IPC — useful to pick `preferredTempSensors` / `usageSensor` values — and must run from an elevated prompt when FanControl runs as administrator.
 
 Build output: `tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe`.
 

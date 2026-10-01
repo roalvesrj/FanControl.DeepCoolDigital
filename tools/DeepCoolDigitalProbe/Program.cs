@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using FanControl.DeepCoolDigital.Core;
 using FanControl.DeepCoolDigital.Core.Protocols;
+using FanControl.IPC;
 using HidSharp;
 
 namespace DeepCoolDigitalProbe
@@ -18,6 +19,8 @@ namespace DeepCoolDigitalProbe
             {
                 case "list":
                     return List();
+                case "sensors":
+                    return ListFanControlSensors(args);
                 case "temp":
                     return Send(DisplayField.Temperature, args, "temperature");
                 case "usage":
@@ -31,9 +34,86 @@ namespace DeepCoolDigitalProbe
         {
             Console.WriteLine("Usage:");
             Console.WriteLine("  DeepCoolDigitalProbe list");
+            Console.WriteLine("  DeepCoolDigitalProbe sensors [--filter TEXT] [--timeout MS]");
             Console.WriteLine("  DeepCoolDigitalProbe temp <celsius> [--seconds N] [--interval MS]");
             Console.WriteLine("  DeepCoolDigitalProbe usage <percent> [--seconds N] [--interval MS]");
             return 1;
+        }
+
+        private static int ListFanControlSensors(string[] args)
+        {
+            string filter = null;
+            int timeoutMilliseconds = 5000;
+
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (args[i] == "--filter")
+                {
+                    if (i + 1 >= args.Length)
+                    {
+                        return Usage();
+                    }
+
+                    filter = args[i + 1];
+                    i++;
+                }
+                else if (args[i] == "--timeout")
+                {
+                    if (i + 1 >= args.Length || !int.TryParse(args[i + 1], out timeoutMilliseconds))
+                    {
+                        return Usage();
+                    }
+
+                    i++;
+                }
+            }
+
+            if (timeoutMilliseconds <= 0)
+            {
+                timeoutMilliseconds = 5000;
+            }
+
+            try
+            {
+                var client = IPCFactory.GetSensorClient();
+                GetAllSensorsReply reply = client.GetAllSensors(
+                    new GetAllSensorsRequest(),
+                    null,
+                    DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds),
+                    CancellationToken.None);
+
+                int shown = 0;
+
+                foreach (SensorMessage sensor in reply.Sensors)
+                {
+                    bool matches =
+                        filter == null
+                        || (sensor.Name != null && sensor.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0)
+                        || (sensor.Identifier != null && sensor.Identifier.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0);
+
+                    if (!matches)
+                    {
+                        continue;
+                    }
+
+                    string valueText = sensor.HasValue ? $"value={sensor.Value}" : "no value";
+                    Console.WriteLine($"[{sensor.Type}] \"{sensor.Name}\" id=\"{sensor.Identifier}\" origin=\"{sensor.Origin}\" {valueText}");
+                    shown++;
+                }
+
+                Console.WriteLine($"{shown} sensor(s).");
+                return 0;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Console.WriteLine("Access denied to FanControl's IPC pipe. Run this command from an elevated prompt (FanControl runs as administrator).");
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("FanControl IPC unavailable: " + ex);
+                return 1;
+            }
         }
 
         private static int List()
