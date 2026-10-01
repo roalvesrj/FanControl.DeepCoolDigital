@@ -37,34 +37,18 @@ jobs:
       - name: Probe CLI smoke (graceful IPC failure expected on CI)
         shell: pwsh
         run: |
-          $output = & .\tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe sensors --timeout 250 2>&1 | Out-String
-          Write-Host $output
-          if ($output -match 'Could not load file or assembly|FileLoadException|TypeLoadException|FileNotFoundException|initializer|inicializador') {
-            Write-Error "Probe failed to load its dependencies: $output"
-            exit 1
-          }
-          if ($output -notmatch 'unavailable|Access denied|acesso negado') {
-            Write-Error "Probe did not fail gracefully: $output"
-            exit 1
-          }
-          exit 0
-
-      - name: Probe packaging check
-        shell: pwsh
-        run: |
-          .\tools\DeepCoolDigitalProbe\pack-probe.ps1 -OutputPath "$env:TEMP\probe.zip"
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [System.IO.Compression.ZipFile]::OpenRead("$env:TEMP\probe.zip")
-          $names = @($zip.Entries | ForEach-Object { $_.FullName })
-          $zip.Dispose()
-          Write-Host ($names -join ', ')
-          if ($names -contains 'FanControl.IPC.dll' -or $names -contains 'HidSharp.dll') {
-            Write-Error 'The probe zip must not bundle FanControl or third-party assemblies.'
-            exit 1
-          }
-          if ($names -notcontains 'setup-probe.ps1') {
-            Write-Error 'setup-probe.ps1 is missing from the probe zip.'
-            exit 1
+          foreach ($runtime in @('net48', 'net8.0')) {
+            $exe = ".\tools\DeepCoolDigitalProbe\bin\Release\$runtime\DeepCoolDigitalProbe.exe"
+            $output = & $exe sensors --timeout 250 2>&1 | Out-String
+            Write-Host "[$runtime] $output"
+            if ($output -match 'Could not load file or assembly|FileLoadException|TypeLoadException|FileNotFoundException|initializer|inicializador') {
+              Write-Error "Probe ($runtime) failed to load its dependencies: $output"
+              exit 1
+            }
+            if ($output -notmatch 'unavailable|Access denied|acesso negado') {
+              Write-Error "Probe ($runtime) did not fail gracefully: $output"
+              exit 1
+            }
           }
           exit 0
 

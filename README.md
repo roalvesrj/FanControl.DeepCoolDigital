@@ -200,6 +200,25 @@ Not supported. Windows 10/11 only.
 
 A standalone CLI that writes directly to the display, no FanControl required. Great to verify your hardware and the protocol before/without installing the plugin.
 
+The probe ships in two builds, because it loads FanControl's assemblies at runtime and those must match the FanControl distribution you run:
+
+| Your FanControl build | Probe folder | Runtime required |
+| --------------------- | ------------ | ---------------- |
+| `.NET` (the folder contains `FanControl.runtimeconfig.json`) | `net8.0` | .NET 8 or newer |
+| `.NET Framework 4.8` (the folder contains `FanControl.exe.config`) | `net48` | .NET Framework 4.8 (built into Windows) |
+
+**Installation is manual (no scripts):** FanControl's assemblies are not redistributed with the probe — FanControl's license restricts redistribution and third-party licenses apply — so copy them from your own FanControl installation into the probe folder that matches your build.
+
+From `<FanControl>` (e.g. `C:\Program Files (x86)\FanControl`) into `<Probe>\net8.0` or `<Probe>\net48`:
+
+- `HidSharp.dll`
+- `FanControl.IPC.dll`
+- `Grpc.Core.Api.dll`
+- `GrpcDotNetNamedPipes.dll`
+- `Google.Protobuf.dll`
+
+Then run the executable from that same folder. The `sensors` command must run from an elevated prompt when FanControl runs as administrator.
+
 ```text
 DeepCoolDigitalProbe list
 DeepCoolDigitalProbe sensors [--filter TEXT] [--timeout MS]
@@ -207,11 +226,9 @@ DeepCoolDigitalProbe temp  42 --seconds 10
 DeepCoolDigitalProbe usage 37 --seconds 10
 ```
 
-Options: `--seconds N` (duration, default 10), `--interval MS` (write interval, default 1000), `--filter TEXT` and `--timeout MS` (sensor listing filter and deadline, default 5000). The `sensors` command lists FanControl's sensors over IPC — useful to pick `preferredTempSensors` / `usageSensor` values — and must run from an elevated prompt when FanControl runs as administrator.
+Options: `--seconds N` (duration, default 10), `--interval MS` (write interval, default 1000), `--filter TEXT` and `--timeout MS` (sensor listing filter and deadline, default 5000). The `sensors` command lists FanControl's sensors over IPC — useful to pick `preferredTempSensors` / `usageSensor` values.
 
-The probe zip bundles only the executable and Microsoft's BCL assemblies. After extracting, run `setup-probe.ps1` once (optionally with `-FanControlPath`, or `powershell -ExecutionPolicy Bypass -File setup-probe.ps1` if script execution is blocked) to copy FanControl's and third-party assemblies (HidSharp, FanControl.IPC, gRPC, Protobuf) from your FanControl installation.
-
-Build output: `tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe`.
+Build outputs: `tools\DeepCoolDigitalProbe\bin\Release\net48\` and `tools\DeepCoolDigitalProbe\bin\Release\net8.0\`.
 
 ## Building from source
 

@@ -1,16 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net48</TargetFramework>
+    <TargetFrameworks>net48;net8.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <OutputType>Exe</OutputType>
     <AssemblyName>DeepCoolDigitalProbe</AssemblyName>
     <RootNamespace>DeepCoolDigitalProbe</RootNamespace>
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Deterministic>true</Deterministic>
+    <RollForward>LatestMajor</RollForward>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
     <Reference Include="HidSharp">
       <HintPath>..\..\lib\HidSharp.dll</HintPath>
       <Private>true</Private>
@@ -49,14 +49,28 @@
     </Reference>
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\FanControl.DeepCoolDigital.Core\FanControl.DeepCoolDigital.Core.csproj" />
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="HidSharp" Version="2.6.4" />
+    <Reference Include="FanControl.IPC">
+      <HintPath>..\..\lib\FanControl.IPC.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Grpc.Core.Api">
+      <HintPath>..\..\lib\Grpc.Core.Api.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="GrpcDotNetNamedPipes">
+      <HintPath>..\..\lib\GrpcDotNetNamedPipes.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Google.Protobuf">
+      <HintPath>..\..\lib\Google.Protobuf.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="setup-probe.ps1">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <ProjectReference Include="..\..\src\FanControl.DeepCoolDigital.Core\FanControl.DeepCoolDigital.Core.csproj" />
   </ItemGroup>
 
 </Project>

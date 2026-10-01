@@ -125,6 +125,7 @@ tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe usage 37 --secon
 - Before every commit, check the branch (`git branch --show-current`) and the status (`git status -sb`); never commit to `main` by accident (this happened once — see lessons).
 - No public comments/issues/replies without prior owner approval (section 3).
 - Do not add runtime dependencies beyond what FanControl already ships (HidSharp, LibreHardwareMonitor, FanControl.IPC, Grpc.*, Google.Protobuf, BCL). In the plugin project, compile-time references use `Private=false` so the host assemblies are used at runtime (the standalone probe uses `Private=true` because it has no host).
+- **Do not add scripts to the repository** (`.ps1`, `.cmd`, `.bat`, etc.). Scripts are a support and security risk the owner does not accept. Installation steps live in the README (how, where and why); release assets are assembled manually.
 - `docs/` is intentionally gitignored; never commit it.
 - Never commit secrets, tokens or machine-specific paths.
 
@@ -132,7 +133,7 @@ tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe usage 37 --secon
 
 - **`ReadSensorValues` (v0.3.0 incident).** The FanControl.IPC proto declares `ReadSensorValues`, and FanControl V281 answers it with `Unimplemented`. Probes had validated `GetAllSensors` only, while the plugin's production read path used `ReadSensorValues` and silently fell back to the local source — the log showed a 30-second reconnect loop that nobody noticed, and the upstream maintainer caught the mistake publicly. **Lesson: validate the exact production code path end-to-end, not just a neighboring API; read the logs of the real deployed artifact.**
 - **Code review is a mandatory stage, not an optional courtesy.** The v0.3.1 fix skipped it once; workflow 4.5 exists because of that. No merge or release without it.
-- **Probe dependency pitfall.** Standalone tools must reference FanControl's exact dependency set (e.g. `System.Memory` 4.0.5.0 from the release archive with auto binding redirects); NuGet versions mismatch the proto-generated bindings and fail with `TypeInitializationException`/`FileLoadException`.
+- **Probe dependency pitfall.** Standalone tools must load FanControl's exact dependency set; NuGet versions mismatch the proto-generated bindings and fail with `TypeInitializationException`/`FileLoadException`. The probe ships as two runtime-matched builds (`net48` and `net8.0`) and its dependencies are copied manually from the user's FanControl installation, as documented in the README (FanControl's assemblies are not redistributed, and a net10 assembly cannot load into a net48 process).
 - **`Environment.TickCount` wraps** (~49.7 days); retry/backoff arithmetic must be wrap-safe (32-bit unchecked) and tested.
 - **Plugin sensors are namespaced by FanControl** (e.g. `DeepCool DIGITAL Display/DeepCoolDigital/CpuTemperature`); keep sensor ids stable so user curves survive upgrades.
 
