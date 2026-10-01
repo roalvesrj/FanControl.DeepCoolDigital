@@ -91,6 +91,7 @@ namespace FanControl.DeepCoolDigital
                     || !SensorValueValidator.IsPlausibleTemperature(temperatureCelsius)
                     || !SensorValueValidator.IsPlausibleUsage(usage))
                 {
+                    Log.Verbose($"FanControl IPC values missing or implausible: temperature={temperatureCelsius}, usage={usage}.");
                     ResetDiscovery();
                     return false;
                 }
@@ -136,11 +137,17 @@ namespace FanControl.DeepCoolDigital
 
                 if (sensor.Type == SensorMessageType.Temperature)
                 {
-                    temperatures.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
+                    if (SensorValueValidator.IsPlausibleTemperature(sensor.Value))
+                    {
+                        temperatures.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
+                    }
                 }
                 else if (sensor.Type == SensorMessageType.UsagePercent)
                 {
-                    usages.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
+                    if (SensorValueValidator.IsPlausibleUsage(sensor.Value))
+                    {
+                        usages.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
+                    }
                 }
             }
 

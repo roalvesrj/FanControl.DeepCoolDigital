@@ -53,4 +53,10 @@
     <ProjectReference Include="..\..\src\FanControl.DeepCoolDigital.Core\FanControl.DeepCoolDigital.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="setup-probe.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

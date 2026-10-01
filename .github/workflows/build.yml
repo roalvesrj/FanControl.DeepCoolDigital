@@ -49,6 +49,25 @@ jobs:
           }
           exit 0
 
+      - name: Probe packaging check
+        shell: pwsh
+        run: |
+          .\tools\DeepCoolDigitalProbe\pack-probe.ps1 -OutputPath "$env:TEMP\probe.zip"
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead("$env:TEMP\probe.zip")
+          $names = @($zip.Entries | ForEach-Object { $_.FullName })
+          $zip.Dispose()
+          Write-Host ($names -join ', ')
+          if ($names -contains 'FanControl.IPC.dll' -or $names -contains 'HidSharp.dll') {
+            Write-Error 'The probe zip must not bundle FanControl or third-party assemblies.'
+            exit 1
+          }
+          if ($names -notcontains 'setup-probe.ps1') {
+            Write-Error 'setup-probe.ps1 is missing from the probe zip.'
+            exit 1
+          }
+          exit 0
+
       - name: Upload plugin artifacts
         uses: actions/upload-artifact@v4
         with:

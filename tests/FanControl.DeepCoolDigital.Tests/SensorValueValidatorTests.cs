@@ -31,6 +31,7 @@ namespace FanControl.DeepCoolDigital.Tests
         [TestCase(100.1f, false)]
         [TestCase(float.NaN, false)]
         [TestCase(float.PositiveInfinity, false)]
+        [TestCase(float.NegativeInfinity, false)]
         public void IsPlausibleUsage_ChecksRange(float percent, bool expected)
         {
             Assert.That(SensorValueValidator.IsPlausibleUsage(percent), Is.EqualTo(expected));

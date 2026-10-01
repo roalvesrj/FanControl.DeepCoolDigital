@@ -1,6 +1,6 @@
-# Copies the DLLs the standalone DeepCoolDigitalProbe needs from a FanControl installation.
-# The probe intentionally does not bundle FanControl's assemblies; run this script once after
-# extracting the probe zip.
+# Copies the assemblies the standalone DeepCoolDigitalProbe needs from a FanControl installation.
+# The probe zip intentionally bundles only our executable and Microsoft's BCL assemblies; FanControl's
+# and third-party assemblies (HidSharp, gRPC, Protobuf) are not redistributable and are copied here.
 param(
     [string]$FanControlPath
 )
@@ -8,48 +8,72 @@ param(
 $ErrorActionPreference = 'Stop'
 $probeDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-$requiredFiles = @(
+$hostFiles = @(
     'HidSharp.dll',
     'FanControl.IPC.dll',
     'Grpc.Core.Api.dll',
     'GrpcDotNetNamedPipes.dll',
-    'Google.Protobuf.dll',
-    'System.Buffers.dll',
-    'System.Memory.dll',
-    'System.Numerics.Vectors.dll',
-    'System.Runtime.CompilerServices.Unsafe.dll'
+    'Google.Protobuf.dll'
 )
 
+function Test-FanControlDirectory([string]$path) {
+    return $path -and (Test-Path -LiteralPath (Join-Path $path 'FanControl.exe'))
+}
+
 function Find-FanControlPath {
+    if ($FanControlPath) {
+        if (Test-FanControlDirectory $FanControlPath) {
+            return $FanControlPath
+        }
+
+        Write-Error "The provided -FanControlPath does not contain FanControl.exe: $FanControlPath"
+        exit 1
+    }
+
     $candidates = @(
-        $FanControlPath,
         'C:\Program Files (x86)\FanControl',
-        'C:\Program Files\FanControl',
-        (Join-Path $env:LOCALAPPDATA 'FanControl'),
-        (Join-Path $env:USERPROFILE 'FanControl')
+        'C:\Program Files\FanControl'
     )
 
+    if ($env:LOCALAPPDATA) {
+        $candidates += (Join-Path $env:LOCALAPPDATA 'FanControl')
+    }
+
+    if ($env:USERPROFILE) {
+        $candidates += (Join-Path $env:USERPROFILE 'FanControl')
+    }
+
     foreach ($candidate in $candidates) {
-        if ($candidate -and (Test-Path (Join-Path $candidate 'FanControl.exe'))) {
+        if (Test-FanControlDirectory $candidate) {
             return $candidate
         }
     }
 
-    $shell = New-Object -ComObject WScript.Shell
-    $startMenus = @(
-        (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'),
-        (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs')
-    )
+    $startMenus = @()
+
+    if ($env:APPDATA) {
+        $startMenus += (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs')
+    }
+
+    if ($env:ProgramData) {
+        $startMenus += (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs')
+    }
 
     foreach ($menu in $startMenus) {
-        if (-not (Test-Path $menu)) {
+        if (-not (Test-Path -LiteralPath $menu)) {
             continue
         }
 
-        foreach ($link in Get-ChildItem $menu -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue) {
-            $target = $shell.CreateShortcut($link.FullName).TargetPath
+        foreach ($link in Get-ChildItem -LiteralPath $menu -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue) {
+            try {
+                $shell = New-Object -ComObject WScript.Shell
+                $target = $shell.CreateShortcut($link.FullName).TargetPath
+            }
+            catch {
+                continue
+            }
 
-            if ($target -like '*FanControl*' -and (Test-Path $target)) {
+            if ($target -and (Test-Path -LiteralPath $target) -and (Test-FanControlDirectory (Split-Path -Parent $target))) {
                 return (Split-Path -Parent $target)
             }
         }
@@ -66,13 +90,21 @@ if (-not $fanControl) {
 }
 
 $copied = 0
+$alreadyPresent = 0
 $missing = @()
 
-foreach ($file in $requiredFiles) {
+foreach ($file in $hostFiles) {
+    $destination = Join-Path $probeDir $file
+
+    if (Test-Path -LiteralPath $destination) {
+        $alreadyPresent++
+        continue
+    }
+
     $source = Join-Path $fanControl $file
 
-    if (Test-Path $source) {
-        Copy-Item $source (Join-Path $probeDir $file) -Force
+    if (Test-Path -LiteralPath $source) {
+        Copy-Item -LiteralPath $source -Destination $destination -Force
         $copied++
     }
     else {
@@ -80,7 +112,8 @@ foreach ($file in $requiredFiles) {
     }
 }
 
-Write-Host "Copied $copied dependency file(s) from: $fanControl"
+Write-Host "FanControl folder: $fanControl"
+Write-Host "Copied $copied file(s); $alreadyPresent already present."
 
 if ($missing.Count -gt 0) {
     Write-Warning ('Not found in the FanControl folder: ' + ($missing -join ', '))
@@ -88,4 +121,4 @@ if ($missing.Count -gt 0) {
     exit 1
 }
 
-Write-Host 'Probe is ready. Example: .\DeepCoolDigitalProbe.exe sensors --filter CPU (elevated)'
+Write-Host 'Probe is ready. Example: .\DeepCoolDigitalProbe.exe sensors --filter CPU (run elevated)'
