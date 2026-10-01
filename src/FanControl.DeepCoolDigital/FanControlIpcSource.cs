@@ -11,21 +11,24 @@ namespace FanControl.DeepCoolDigital
     /// </summary>
     /// <remarks>
     /// This is the preferred sensor source: it reuses the hardware data FanControl already collected,
-    /// so the plugin does not need its own LibreHardwareMonitor instance. The sensor identifiers are
-    /// discovered once through <c>GetAllSensors</c> and then read in a single batched
-    /// <c>ReadSensorValues</c> call per update cycle. Every failure degrades to <see cref="TryRead"/>
-    /// returning <see langword="false"/> so the caller can fall back to the local sources.
+    /// so the plugin does not need its own LibreHardwareMonitor instance. Sensor identifiers are
+    /// discovered once per connection (and re-resolved when a read no longer finds them); the values
+    /// are read from a single <c>GetAllSensors</c> call per update cycle. The proto also declares
+    /// <c>ReadSensorValues</c>, but FanControl V281 answers it with <c>Unimplemented</c>, so it is
+    /// intentionally not used. Every failure degrades to <see cref="TryRead"/> returning
+    /// <see langword="false"/> so the caller can fall back.
     /// </remarks>
     internal sealed class FanControlIpcSource : ISensorSource, IDisposable
     {
-        private const int DiscoveryTimeoutMilliseconds = 500;
-        private const int ReadTimeoutMilliseconds = 250;
+        private const int FirstReadTimeoutMilliseconds = 500;
+        private const int ReadTimeoutMilliseconds = 150;
 
         private readonly IReadOnlyList<string> _preferredTemperatureNames;
         private readonly string _preferredUsageSensor;
         private SensorsRPC.SensorsRPCClient _client;
         private string _temperatureIdentifier;
         private string _usageIdentifier;
+        private bool _firstRead = true;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="FanControlIpcSource"/> class.
@@ -49,31 +52,46 @@ namespace FanControl.DeepCoolDigital
             temperatureCelsius = 0f;
             usage = 0f;
 
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
             try
             {
                 SensorsRPC.SensorsRPCClient client = EnsureClient();
 
+                int timeoutMilliseconds = _firstRead ? FirstReadTimeoutMilliseconds : ReadTimeoutMilliseconds;
+
+                GetAllSensorsReply reply = client.GetAllSensors(
+                    new GetAllSensorsRequest(),
+                    null,
+                    DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds),
+                    CancellationToken.None);
+
+                _firstRead = false;
+
                 if (_temperatureIdentifier == null || _usageIdentifier == null)
                 {
-                    if (!TryDiscover(client))
+                    if (!TrySelectIdentifiers(reply))
                     {
                         return false;
                     }
                 }
 
-                var request = new ReadSensorValuesRequest();
-                request.Ids.Add(_temperatureIdentifier);
-                request.Ids.Add(_usageIdentifier);
+                var samples = new List<SensorSample>(reply.Sensors.Count);
 
-                ReadSensorValuesReply reply = client.ReadSensorValues(
-                    request,
-                    null,
-                    DateTime.UtcNow.AddMilliseconds(ReadTimeoutMilliseconds),
-                    CancellationToken.None);
-
-                if (!reply.Values.TryGetValue(_temperatureIdentifier, out temperatureCelsius)
-                    || !reply.Values.TryGetValue(_usageIdentifier, out usage))
+                foreach (SensorMessage sensor in reply.Sensors)
                 {
+                    if (sensor.HasValue)
+                    {
+                        samples.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
+                    }
+                }
+
+                if (!SensorLookup.TryGetValue(samples, _temperatureIdentifier, out temperatureCelsius)
+                    || !SensorLookup.TryGetValue(samples, _usageIdentifier, out usage)
+                    || !SensorValueValidator.IsPlausibleTemperature(temperatureCelsius)
+                    || !SensorValueValidator.IsPlausibleUsage(usage))
+                {
+                    Log.Verbose($"FanControl IPC values missing or implausible: temperature={temperatureCelsius}, usage={usage}.");
                     ResetDiscovery();
                     return false;
                 }
@@ -82,18 +100,10 @@ namespace FanControl.DeepCoolDigital
             }
             catch (Exception ex)
             {
-                Log.Verbose("FanControl IPC read failed: " + ex.Message);
+                Log.Verbose($"FanControl IPC read failed after {stopwatch.ElapsedMilliseconds} ms: {ex.Message}");
                 ResetClient();
                 return false;
             }
-        }
-
-        /// <summary>
-        /// Drops the client and the discovered sensor identifiers, forcing a reconnect on the next read.
-        /// </summary>
-        public void Reset()
-        {
-            ResetClient();
         }
 
         /// <inheritdoc />
@@ -113,14 +123,8 @@ namespace FanControl.DeepCoolDigital
             return _client;
         }
 
-        private bool TryDiscover(SensorsRPC.SensorsRPCClient client)
+        private bool TrySelectIdentifiers(GetAllSensorsReply reply)
         {
-            GetAllSensorsReply reply = client.GetAllSensors(
-                new GetAllSensorsRequest(),
-                null,
-                DateTime.UtcNow.AddMilliseconds(DiscoveryTimeoutMilliseconds),
-                CancellationToken.None);
-
             var temperatures = new List<SensorSample>();
             var usages = new List<SensorSample>();
 
@@ -133,11 +137,17 @@ namespace FanControl.DeepCoolDigital
 
                 if (sensor.Type == SensorMessageType.Temperature)
                 {
-                    temperatures.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
+                    if (SensorValueValidator.IsPlausibleTemperature(sensor.Value))
+                    {
+                        temperatures.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
+                    }
                 }
                 else if (sensor.Type == SensorMessageType.UsagePercent)
                 {
-                    usages.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
+                    if (SensorValueValidator.IsPlausibleUsage(sensor.Value))
+                    {
+                        usages.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
+                    }
                 }
             }
 
@@ -152,12 +162,8 @@ namespace FanControl.DeepCoolDigital
                 return false;
             }
 
-            _temperatureIdentifier = string.IsNullOrEmpty(temperature.Value.Identifier)
-                ? temperature.Value.Name
-                : temperature.Value.Identifier;
-            _usageIdentifier = string.IsNullOrEmpty(usage.Value.Identifier)
-                ? usage.Value.Name
-                : usage.Value.Identifier;
+            _temperatureIdentifier = SensorLookup.ResolveKey(temperature.Value);
+            _usageIdentifier = SensorLookup.ResolveKey(usage.Value);
 
             Log.Event($"Connected to FanControl's IPC sensor channel; sensors: temperature=\"{temperature.Value.Name}\", usage=\"{usage.Value.Name}\".");
             return true;
@@ -182,6 +188,7 @@ namespace FanControl.DeepCoolDigital
             }
 
             _client = null;
+            _firstRead = true;
             ResetDiscovery();
         }
     }

@@ -82,6 +82,33 @@ namespace FanControl.DeepCoolDigital.Tests
         }
 
         [Test]
+        public void Load_OutOfRangeUsbIds_FallBackToDefaults()
+        {
+            PluginConfig config = LoadWith("vendorId=0x10000\nproductId=-1");
+
+            Assert.That(config.VendorId, Is.EqualTo(0x3633));
+            Assert.That(config.ProductId, Is.EqualTo(0x0008));
+        }
+
+        [TestCase("0", 0)]
+        [TestCase("0xFFFF", 65535)]
+        public void Load_UsbIdBoundaries_AreAccepted(string value, int expected)
+        {
+            PluginConfig config = LoadWith($"vendorId={value}");
+
+            Assert.That(config.VendorId, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Load_OutOfRangeSectionUsbIds_AreIgnored()
+        {
+            PluginConfig config = LoadWith("[device:0x10000:-1]\nmode=usage\n");
+
+            Assert.That(config.DeviceOverrides, Is.Empty);
+            Assert.That(config.Mode, Is.EqualTo(DisplayMode.Temperature));
+        }
+
+        [Test]
         public void Load_ValidFile_ParsesAllValues()
         {
             PluginConfig config = LoadWith("mode=dynamic\nautoSwitchSeconds=10\nalarmTemperature=85\n");

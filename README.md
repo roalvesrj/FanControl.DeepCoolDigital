@@ -32,8 +32,8 @@ The display can be configured to show:
 
 - Reads CPU temperature and usage **from FanControl's own sensors over its IPC channel** when available — while the channel is healthy there is no second LibreHardwareMonitor instance, no extra driver and no extra service. Falls back automatically to a local LibreHardwareMonitor instance and Windows kernel counters when the channel is unavailable, and releases that fallback again once the IPC has been healthy for ~30 seconds.
 - Registers a **`DeepCool Display CPU Temp`** sensor inside FanControl, usable in any fan curve.
-- **Multiple displays at once**: every supported DeepCool DIGITAL cooler found on the system is driven independently, with optional per-device settings.
-- High-temperature alert on the cooler, matching DeepCool Hub ("exceeds 90 °C" by default), toggleable per device.
+- **Multiple displays at once**: every supported display identity found on the system is driven independently (one session per USB identity; only the first unit of each identity is driven), with optional per-device settings.
+- High-temperature alert on the cooler, matching DeepCool Hub's behavior (at or above 90 °C by default), toggleable per device.
 - Values beyond what a display can render are clamped to all-nines (e.g. `99` on the AG), exactly like DeepCool Hub does.
 - Fahrenheit support on device families that accept it (e.g. the AK series).
 - **Hot-reload configuration**: edit the ini file and the change is applied in about a second — no FanControl restart.
@@ -153,7 +153,7 @@ The display is a single HID device; if DeepCool Hub runs at the same time as thi
 
 The plugin implements `IPlugin2` and runs inside the FanControl process:
 
-- **Sensors** — by default the plugin reads FanControl's own sensors through its named-pipe IPC channel (`SensorsRPC.GetAllSensors` / `ReadSensorValues`), so the values shown on the cooler are exactly what FanControl already knows. Temperature candidates are narrowed to CPU sensors (LibreHardwareMonitor `/amdcpu` / `/intelcpu` identifiers) so a GPU hot spot can never be mistaken for the CPU, with priority `CPU Package` (Intel) → `Core (Tctl/Tdie)` / `Core (Tctl)` / `Core (Tdie)` (AMD) → highest CPU temperature; usage defaults to `CPU Total`. If the channel is unavailable, it falls back to a local CPU-only `LibreHardwareMonitor` instance (reusing the loaded PawnIO/WinRing0 driver) plus `GetSystemTimes` kernel counters, retries the IPC every 30 seconds and releases the local instance again after ~30 s of healthy IPC. `sensorSource` can pin either behavior.
+- **Sensors** — by default the plugin reads FanControl's own sensors through its named-pipe IPC channel (`SensorsRPC.GetAllSensors`), so the values shown on the cooler are exactly what FanControl already knows. Temperature candidates are narrowed to CPU sensors (LibreHardwareMonitor `/amdcpu` / `/intelcpu` identifiers) so a GPU hot spot can never be mistaken for the CPU, with priority `CPU Package` (Intel) → `Core (Tctl/Tdie)` / `Core (Tctl)` / `Core (Tdie)` (AMD) → highest CPU temperature; usage defaults to `CPU Total`. Values coming from the channel are validated against plausible ranges (−20..150 °C and 0..100 %); implausible readings are rejected and trigger the local fallback. The channel is local but unauthenticated, which is accepted as a local risk. If the channel is unavailable, it falls back to a local CPU-only `LibreHardwareMonitor` instance (reusing the loaded PawnIO/WinRing0 driver) plus `GetSystemTimes` kernel counters, retries the IPC every 30 seconds and releases the local instance again after ~30 s of healthy IPC. `sensorSource` can pin either behavior.
 - **Devices** — every supported display found at startup gets its own session (protocol + HID stream + settings) and is driven at every FanControl update cycle (≈1 Hz). Failures and reconnects are isolated per device.
 - **Protocols** — each device family has its own packet builder in the core, covered by byte-level tests. The tested AG family writes a 64-byte report to VID `0x3633`, PID `0x0008`:
 
@@ -200,16 +200,35 @@ Not supported. Windows 10/11 only.
 
 A standalone CLI that writes directly to the display, no FanControl required. Great to verify your hardware and the protocol before/without installing the plugin.
 
+The probe ships in two builds, because it loads FanControl's assemblies at runtime and those must match the FanControl distribution you run:
+
+| Your FanControl build | Probe folder | Runtime required |
+| --------------------- | ------------ | ---------------- |
+| `.NET` (the folder contains `FanControl.runtimeconfig.json`) | `net8.0` | .NET 8 or newer |
+| `.NET Framework 4.8` (the folder contains `FanControl.exe.config`) | `net48` | .NET Framework 4.8 (built into Windows) |
+
+**Installation is manual (no scripts):** FanControl's assemblies are not redistributed with the probe — FanControl's license restricts redistribution and third-party licenses apply — so copy them from your own FanControl installation into the probe folder that matches your build.
+
+From `<FanControl>` (e.g. `C:\Program Files (x86)\FanControl`) into `<Probe>\net8.0` or `<Probe>\net48`:
+
+- `HidSharp.dll`
+- `FanControl.IPC.dll`
+- `Grpc.Core.Api.dll`
+- `GrpcDotNetNamedPipes.dll`
+- `Google.Protobuf.dll`
+
+Then run the executable from that same folder. The `sensors` command must run from an elevated prompt when FanControl runs as administrator.
+
 ```text
 DeepCoolDigitalProbe list
-DeepCoolDigitalProbe sensors [--filter TEXT]
+DeepCoolDigitalProbe sensors [--filter TEXT] [--timeout MS]
 DeepCoolDigitalProbe temp  42 --seconds 10
 DeepCoolDigitalProbe usage 37 --seconds 10
 ```
 
-Options: `--seconds N` (duration, default 10) and `--interval MS` (write interval, default 1000). The `sensors` command lists FanControl's sensors over IPC — useful to pick `preferredTempSensors` / `usageSensor` values — and must run from an elevated prompt when FanControl runs as administrator.
+Options: `--seconds N` (duration, default 10), `--interval MS` (write interval, default 1000), `--filter TEXT` and `--timeout MS` (sensor listing filter and deadline, default 5000). The `sensors` command lists FanControl's sensors over IPC — useful to pick `preferredTempSensors` / `usageSensor` values.
 
-Build output: `tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe`.
+Build outputs: `tools\DeepCoolDigitalProbe\bin\Release\net48\` and `tools\DeepCoolDigitalProbe\bin\Release\net8.0\`.
 
 ## Building from source
 
@@ -226,7 +245,7 @@ dotnet build -c Release
 
 Plugin output: `src\FanControl.DeepCoolDigital\bin\Release\FanControl.DeepCoolDigital.dll` + `FanControl.DeepCoolDigital.Core.dll` + `DeepCoolDigital.ini`. Run the tests with `dotnet test`.
 
-The `lib\` folder contains the **unmodified reference assemblies** shipped with the FanControl V281 release archive (`FanControl.Plugins.dll`, `HidSharp.dll`, `LibreHardwareMonitorLib.dll` + XML docs). They are used only for compilation; at runtime the plugin binds to FanControl's own copies, and nothing from `lib\` is redistributed in the plugin output.
+The `lib\` folder contains the **unmodified reference assemblies** shipped with the FanControl V281 release archive: `FanControl.Plugins.dll`, `HidSharp.dll`, `LibreHardwareMonitorLib.dll`, `FanControl.IPC.dll`, `Grpc.Core.Api.dll`, `GrpcDotNetNamedPipes.dll`, `Google.Protobuf.dll` and the `System.*` dependencies of the standalone probe (plus XML docs). They are used only for compilation; at runtime the plugin binds to FanControl's own copies, and nothing from `lib\` is redistributed in the plugin output.
 
 ## Project structure
 

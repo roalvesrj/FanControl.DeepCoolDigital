@@ -10,6 +10,12 @@ namespace FanControl.DeepCoolDigital.Core
     /// The manager is deliberately free of hardware and FanControl dependencies so the fallback state
     /// machine is fully unit-testable. It also swallows exceptions thrown by the sources themselves,
     /// which covers the case where the primary source cannot even load its underlying types.
+    /// <para>
+    /// Retirement semantics: a non-null fallback starts as "active", so an eagerly created (but never
+    /// used) fallback is released after <c>retireFallbackAfterSuccesses</c> consecutive primary
+    /// successes. The callback runs once per activation; using the fallback again reactivates it and
+    /// schedules another retirement after the next run of primary successes.
+    /// </para>
     /// </remarks>
     public sealed class SensorSourceManager
     {
@@ -23,6 +29,7 @@ namespace FanControl.DeepCoolDigital.Core
         private readonly Action _retireFallback;
         private string _lastDescription;
         private int _primarySuccessStreak;
+        private bool _fallbackActive;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SensorSourceManager"/> class.
@@ -54,6 +61,7 @@ namespace FanControl.DeepCoolDigital.Core
             _logEvent = logEvent ?? throw new ArgumentNullException(nameof(logEvent));
             _logSource = logSource ?? throw new ArgumentNullException(nameof(logSource));
             _retireFallback = retireFallback;
+            _fallbackActive = fallback != null;
         }
 
         /// <summary>
@@ -124,6 +132,7 @@ namespace FanControl.DeepCoolDigital.Core
             {
                 if (_fallback.TryRead(out temperatureCelsius, out usage))
                 {
+                    _fallbackActive = true;
                     LogSource("local (LibreHardwareMonitor + kernel)");
                     return true;
                 }
@@ -138,7 +147,7 @@ namespace FanControl.DeepCoolDigital.Core
 
         private void RetireFallbackWhenIdle()
         {
-            if (_retireFallback == null || _retireFallbackAfterSuccesses <= 0)
+            if (_retireFallback == null || _retireFallbackAfterSuccesses <= 0 || !_fallbackActive)
             {
                 return;
             }
@@ -146,7 +155,16 @@ namespace FanControl.DeepCoolDigital.Core
             if (_primarySuccessStreak >= _retireFallbackAfterSuccesses)
             {
                 _primarySuccessStreak = 0;
-                _retireFallback();
+                _fallbackActive = false;
+
+                try
+                {
+                    _retireFallback();
+                }
+                catch (Exception ex)
+                {
+                    _logEvent("Fallback retirement failed: " + ex.Message);
+                }
             }
         }
 

@@ -235,10 +235,10 @@ namespace FanControl.DeepCoolDigital.Core
 
                             break;
                         case "vendorid":
-                            config.VendorId = ParseInt(value, config.VendorId);
+                            config.VendorId = ParseUsbId(value, config.VendorId);
                             break;
                         case "productid":
-                            config.ProductId = ParseInt(value, config.ProductId);
+                            config.ProductId = ParseUsbId(value, config.ProductId);
                             break;
                         case "loglevel":
                             config.LogLevel = ParseLogLevel(value, config.LogLevel);
@@ -439,7 +439,7 @@ namespace FanControl.DeepCoolDigital.Core
             int parsedVendor = ParseInt(parts[1].Trim(), int.MinValue);
             int parsedProduct = ParseInt(parts[2].Trim(), int.MinValue);
 
-            if (parsedVendor == int.MinValue || parsedProduct == int.MinValue)
+            if (parsedVendor < 0 || parsedVendor > 0xFFFF || parsedProduct < 0 || parsedProduct > 0xFFFF)
             {
                 return false;
             }
@@ -553,6 +553,13 @@ namespace FanControl.DeepCoolDigital.Core
         private static int ParseInt(string value, int fallback)
         {
             return TryParseInt(value, out int result) ? result : fallback;
+        }
+
+        private static int ParseUsbId(string value, int fallback)
+        {
+            int parsed = ParseInt(value, int.MinValue);
+
+            return parsed >= 0 && parsed <= 0xFFFF ? parsed : fallback;
         }
 
         private static bool TryParseInt(string value, out int result)

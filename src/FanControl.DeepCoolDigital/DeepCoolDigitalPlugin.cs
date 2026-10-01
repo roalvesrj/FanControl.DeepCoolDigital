@@ -64,7 +64,7 @@ namespace FanControl.DeepCoolDigital
             }
             catch (Exception ex)
             {
-                Log.Event("Initialize failed: " + ex);
+                Log.Exception("Initialize failed", ex);
             }
         }
 
@@ -94,7 +94,7 @@ namespace FanControl.DeepCoolDigital
             }
             catch (Exception ex)
             {
-                Log.Event("Load failed: " + ex);
+                Log.Exception("Load failed", ex);
             }
         }
 
@@ -107,7 +107,7 @@ namespace FanControl.DeepCoolDigital
             }
             catch (Exception ex)
             {
-                Log.Event("Update failed: " + ex);
+                Log.Exception("Update failed", ex);
             }
         }
 
@@ -143,7 +143,7 @@ namespace FanControl.DeepCoolDigital
             }
             catch (Exception ex)
             {
-                Log.Event("Close failed: " + ex);
+                Log.Exception("Close failed", ex);
             }
         }
 
@@ -349,3 +349,4 @@ namespace FanControl.DeepCoolDigital
         }
     }
 }
+
