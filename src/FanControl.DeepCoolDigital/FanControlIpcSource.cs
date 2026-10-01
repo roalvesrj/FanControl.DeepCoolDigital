@@ -11,15 +11,15 @@ namespace FanControl.DeepCoolDigital
     /// </summary>
     /// <remarks>
     /// This is the preferred sensor source: it reuses the hardware data FanControl already collected,
-    /// so the plugin does not need its own LibreHardwareMonitor instance. The sensor identifiers are
-    /// discovered once through <c>GetAllSensors</c> and then read in a single batched
-    /// <c>ReadSensorValues</c> call per update cycle. Every failure degrades to <see cref="TryRead"/>
-    /// returning <see langword="false"/> so the caller can fall back to the local sources.
+    /// so the plugin does not need its own LibreHardwareMonitor instance. Sensor identifiers are
+    /// discovered once and the values are read from a single <c>GetAllSensors</c> call per update cycle.
+    /// The proto also declares <c>ReadSensorValues</c>, but FanControl V281 answers it with
+    /// <c>Unimplemented</c>, so it is intentionally not used. Every failure degrades to
+    /// <see cref="TryRead"/> returning <see langword="false"/> so the caller can fall back.
     /// </remarks>
     internal sealed class FanControlIpcSource : ISensorSource, IDisposable
     {
-        private const int DiscoveryTimeoutMilliseconds = 500;
-        private const int ReadTimeoutMilliseconds = 250;
+        private const int ReadTimeoutMilliseconds = 500;
 
         private readonly IReadOnlyList<string> _preferredTemperatureNames;
         private readonly string _preferredUsageSensor;
@@ -53,32 +53,49 @@ namespace FanControl.DeepCoolDigital
             {
                 SensorsRPC.SensorsRPCClient client = EnsureClient();
 
+                GetAllSensorsReply reply = client.GetAllSensors(
+                    new GetAllSensorsRequest(),
+                    null,
+                    DateTime.UtcNow.AddMilliseconds(ReadTimeoutMilliseconds),
+                    CancellationToken.None);
+
                 if (_temperatureIdentifier == null || _usageIdentifier == null)
                 {
-                    if (!TryDiscover(client))
+                    if (!TrySelectIdentifiers(reply))
                     {
                         return false;
                     }
                 }
 
-                var request = new ReadSensorValuesRequest();
-                request.Ids.Add(_temperatureIdentifier);
-                request.Ids.Add(_usageIdentifier);
+                bool temperatureFound = false;
+                bool usageFound = false;
 
-                ReadSensorValuesReply reply = client.ReadSensorValues(
-                    request,
-                    null,
-                    DateTime.UtcNow.AddMilliseconds(ReadTimeoutMilliseconds),
-                    CancellationToken.None);
-
-                if (!reply.Values.TryGetValue(_temperatureIdentifier, out temperatureCelsius)
-                    || !reply.Values.TryGetValue(_usageIdentifier, out usage))
+                foreach (SensorMessage sensor in reply.Sensors)
                 {
-                    ResetDiscovery();
-                    return false;
+                    if (!sensor.HasValue)
+                    {
+                        continue;
+                    }
+
+                    if (!temperatureFound && string.Equals(sensor.Identifier, _temperatureIdentifier, StringComparison.Ordinal))
+                    {
+                        temperatureCelsius = sensor.Value;
+                        temperatureFound = true;
+                    }
+                    else if (!usageFound && string.Equals(sensor.Identifier, _usageIdentifier, StringComparison.Ordinal))
+                    {
+                        usage = sensor.Value;
+                        usageFound = true;
+                    }
+
+                    if (temperatureFound && usageFound)
+                    {
+                        return true;
+                    }
                 }
 
-                return true;
+                ResetDiscovery();
+                return false;
             }
             catch (Exception ex)
             {
@@ -113,14 +130,8 @@ namespace FanControl.DeepCoolDigital
             return _client;
         }
 
-        private bool TryDiscover(SensorsRPC.SensorsRPCClient client)
+        private bool TrySelectIdentifiers(GetAllSensorsReply reply)
         {
-            GetAllSensorsReply reply = client.GetAllSensors(
-                new GetAllSensorsRequest(),
-                null,
-                DateTime.UtcNow.AddMilliseconds(DiscoveryTimeoutMilliseconds),
-                CancellationToken.None);
-
             var temperatures = new List<SensorSample>();
             var usages = new List<SensorSample>();
 
