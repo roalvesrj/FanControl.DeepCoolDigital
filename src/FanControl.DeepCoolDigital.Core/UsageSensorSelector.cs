@@ -8,8 +8,8 @@ namespace FanControl.DeepCoolDigital.Core
     /// </summary>
     /// <remarks>
     /// The configured name or identifier is matched first (case-insensitive), then the well-known
-    /// "CPU Total" sensor, then any sensor whose name contains "Total". Readings outside the
-    /// <c>0..100</c> range and not-a-number values are ignored.
+    /// "CPU Total" sensor, then any sensor whose name contains "Total" (preferring names that also
+    /// mention "CPU"). Readings outside the <c>0..100</c> range and not-a-number values are ignored.
     /// </remarks>
     public static class UsageSensorSelector
     {
@@ -44,17 +44,30 @@ namespace FanControl.DeepCoolDigital.Core
                 return wellKnown;
             }
 
+            SensorSample? anyTotal = null;
+            SensorSample? cpuTotal = null;
+
             foreach (SensorSample sample in samples)
             {
-                if (IsValid(sample.Value)
-                    && !string.IsNullOrEmpty(sample.Name)
-                    && sample.Name.IndexOf("Total", StringComparison.OrdinalIgnoreCase) >= 0)
+                if (!IsValid(sample.Value)
+                    || string.IsNullOrEmpty(sample.Name)
+                    || sample.Name.IndexOf("Total", StringComparison.OrdinalIgnoreCase) < 0)
                 {
-                    return sample;
+                    continue;
+                }
+
+                if (anyTotal == null)
+                {
+                    anyTotal = sample;
+                }
+
+                if (cpuTotal == null && sample.Name.IndexOf("CPU", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    cpuTotal = sample;
                 }
             }
 
-            return null;
+            return cpuTotal ?? anyTotal;
         }
 
         private static SensorSample? FindMatch(IReadOnlyList<SensorSample> samples, string nameOrIdentifier)

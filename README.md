@@ -30,7 +30,7 @@ The display can be configured to show:
 
 ## Features
 
-- Reads CPU temperature and usage **from FanControl's own sensors over its IPC channel** when available — no second LibreHardwareMonitor instance, no extra driver, no extra service. Falls back automatically to a local LibreHardwareMonitor instance and Windows kernel counters when the channel is unavailable.
+- Reads CPU temperature and usage **from FanControl's own sensors over its IPC channel** when available — while the channel is healthy there is no second LibreHardwareMonitor instance, no extra driver and no extra service. Falls back automatically to a local LibreHardwareMonitor instance and Windows kernel counters when the channel is unavailable, and releases that fallback again once the IPC has been healthy for ~30 seconds.
 - Registers a **`DeepCool Display CPU Temp`** sensor inside FanControl, usable in any fan curve.
 - **Multiple displays at once**: every supported DeepCool DIGITAL cooler found on the system is driven independently, with optional per-device settings.
 - High-temperature alert on the cooler, matching DeepCool Hub ("exceeds 90 °C" by default), toggleable per device.
@@ -153,7 +153,7 @@ The display is a single HID device; if DeepCool Hub runs at the same time as thi
 
 The plugin implements `IPlugin2` and runs inside the FanControl process:
 
-- **Sensors** — by default the plugin reads FanControl's own sensors through its named-pipe IPC channel (`SensorsRPC.GetAllSensors` / `ReadSensorValues`), so the values shown on the cooler are exactly what FanControl already knows: temperature priority `CPU Package` (Intel) → `Core (Tctl/Tdie)` / `Core (Tctl)` / `Core (Tdie)` (AMD) → highest CPU temperature, usage defaulting to `CPU Total`. If the channel is unavailable, it falls back to a local CPU-only `LibreHardwareMonitor` instance (reusing the loaded PawnIO/WinRing0 driver) plus `GetSystemTimes` kernel counters, retrying the IPC every 30 seconds. `sensorSource` can pin either behavior.
+- **Sensors** — by default the plugin reads FanControl's own sensors through its named-pipe IPC channel (`SensorsRPC.GetAllSensors` / `ReadSensorValues`), so the values shown on the cooler are exactly what FanControl already knows. Temperature candidates are narrowed to CPU sensors (LibreHardwareMonitor `/amdcpu` / `/intelcpu` identifiers) so a GPU hot spot can never be mistaken for the CPU, with priority `CPU Package` (Intel) → `Core (Tctl/Tdie)` / `Core (Tctl)` / `Core (Tdie)` (AMD) → highest CPU temperature; usage defaults to `CPU Total`. If the channel is unavailable, it falls back to a local CPU-only `LibreHardwareMonitor` instance (reusing the loaded PawnIO/WinRing0 driver) plus `GetSystemTimes` kernel counters, retries the IPC every 30 seconds and releases the local instance again after ~30 s of healthy IPC. `sensorSource` can pin either behavior.
 - **Devices** — every supported display found at startup gets its own session (protocol + HID stream + settings) and is driven at every FanControl update cycle (≈1 Hz). Failures and reconnects are isolated per device.
 - **Protocols** — each device family has its own packet builder in the core, covered by byte-level tests. The tested AG family writes a 64-byte report to VID `0x3633`, PID `0x0008`:
 

@@ -71,6 +71,21 @@ namespace FanControl.DeepCoolDigital.Tests
             Assert.That(sample.Value.Name, Is.EqualTo("GPU Total"));
         }
 
+        [Test]
+        public void Select_OnlyCpuNamedTotals_PrefersTheCpuOne()
+        {
+            var samples = new[]
+            {
+                new SensorSample("GPU Total", 30f),
+                new SensorSample("CPU Package Total", 12f)
+            };
+
+            SensorSample? sample = UsageSensorSelector.Select(samples, null);
+
+            Assert.That(sample.HasValue, Is.True);
+            Assert.That(sample.Value.Name, Is.EqualTo("CPU Package Total"));
+        }
+
         [TestCase(120f)]
         [TestCase(-1f)]
         [TestCase(float.NaN)]

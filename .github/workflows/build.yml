@@ -32,6 +32,16 @@ jobs:
       - name: Test
         run: dotnet test tests/FanControl.DeepCoolDigital.Tests/FanControl.DeepCoolDigital.Tests.csproj -c Release --no-build
 
+      - name: Probe CLI smoke (graceful IPC failure expected on CI)
+        shell: pwsh
+        run: |
+          $output = & .\tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe sensors --timeout 250 2>&1 | Out-String
+          Write-Host $output
+          if ($output -match 'initializer|inicializador') {
+            Write-Error "Probe failed to load the IPC types (missing dependency?): $output"
+            exit 1
+          }
+
       - name: Upload plugin artifacts
         uses: actions/upload-artifact@v4
         with:

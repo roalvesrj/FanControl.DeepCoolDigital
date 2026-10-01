@@ -16,8 +16,11 @@ namespace FanControl.DeepCoolDigital
     /// <c>ReadSensorValues</c> call per update cycle. Every failure degrades to <see cref="TryRead"/>
     /// returning <see langword="false"/> so the caller can fall back to the local sources.
     /// </remarks>
-    internal sealed class FanControlIpcSource : IDisposable
+    internal sealed class FanControlIpcSource : ISensorSource, IDisposable
     {
+        private const int DiscoveryTimeoutMilliseconds = 500;
+        private const int ReadTimeoutMilliseconds = 250;
+
         private readonly IReadOnlyList<string> _preferredTemperatureNames;
         private readonly string _preferredUsageSensor;
         private SensorsRPC.SensorsRPCClient _client;
@@ -65,7 +68,7 @@ namespace FanControl.DeepCoolDigital
                 ReadSensorValuesReply reply = client.ReadSensorValues(
                     request,
                     null,
-                    DateTime.UtcNow.AddMilliseconds(500),
+                    DateTime.UtcNow.AddMilliseconds(ReadTimeoutMilliseconds),
                     CancellationToken.None);
 
                 if (!reply.Values.TryGetValue(_temperatureIdentifier, out temperatureCelsius)
@@ -96,16 +99,7 @@ namespace FanControl.DeepCoolDigital
         /// <inheritdoc />
         public void Dispose()
         {
-            try
-            {
-                (_client as IDisposable)?.Dispose();
-            }
-            catch
-            {
-            }
-
-            _client = null;
-            ResetDiscovery();
+            ResetClient();
         }
 
         private SensorsRPC.SensorsRPCClient EnsureClient()
@@ -116,7 +110,6 @@ namespace FanControl.DeepCoolDigital
             }
 
             _client = IPCFactory.GetSensorClient();
-            Log.Event("Connected to FanControl's IPC sensor channel.");
             return _client;
         }
 
@@ -125,7 +118,7 @@ namespace FanControl.DeepCoolDigital
             GetAllSensorsReply reply = client.GetAllSensors(
                 new GetAllSensorsRequest(),
                 null,
-                DateTime.UtcNow.AddSeconds(1),
+                DateTime.UtcNow.AddMilliseconds(DiscoveryTimeoutMilliseconds),
                 CancellationToken.None);
 
             var temperatures = new List<SensorSample>();
@@ -148,7 +141,9 @@ namespace FanControl.DeepCoolDigital
                 }
             }
 
-            SensorSample? temperature = TemperatureSensorSelector.SelectSample(temperatures, _preferredTemperatureNames);
+            SensorSample? temperature = TemperatureSensorSelector.SelectSample(
+                CpuSensorFilter.SelectCpuSensors(temperatures),
+                _preferredTemperatureNames);
             SensorSample? usage = UsageSensorSelector.Select(usages, _preferredUsageSensor);
 
             if (!temperature.HasValue || !usage.HasValue)
@@ -157,10 +152,14 @@ namespace FanControl.DeepCoolDigital
                 return false;
             }
 
-            _temperatureIdentifier = temperature.Value.Identifier ?? temperature.Value.Name;
-            _usageIdentifier = usage.Value.Identifier ?? usage.Value.Name;
+            _temperatureIdentifier = string.IsNullOrEmpty(temperature.Value.Identifier)
+                ? temperature.Value.Name
+                : temperature.Value.Identifier;
+            _usageIdentifier = string.IsNullOrEmpty(usage.Value.Identifier)
+                ? usage.Value.Name
+                : usage.Value.Identifier;
 
-            Log.Event($"FanControl IPC sensors: temperature=\"{temperature.Value.Name}\", usage=\"{usage.Value.Name}\".");
+            Log.Event($"Connected to FanControl's IPC sensor channel; sensors: temperature=\"{temperature.Value.Name}\", usage=\"{usage.Value.Name}\".");
             return true;
         }
 
@@ -172,6 +171,8 @@ namespace FanControl.DeepCoolDigital
 
         private void ResetClient()
         {
+            // Best effort: the generated gRPC client does not implement IDisposable in the current
+            // Grpc versions, so dropping the reference is the available release path.
             try
             {
                 (_client as IDisposable)?.Dispose();

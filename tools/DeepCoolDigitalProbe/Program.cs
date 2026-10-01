@@ -34,7 +34,7 @@ namespace DeepCoolDigitalProbe
         {
             Console.WriteLine("Usage:");
             Console.WriteLine("  DeepCoolDigitalProbe list");
-            Console.WriteLine("  DeepCoolDigitalProbe sensors [--filter TEXT]");
+            Console.WriteLine("  DeepCoolDigitalProbe sensors [--filter TEXT] [--timeout MS]");
             Console.WriteLine("  DeepCoolDigitalProbe temp <celsius> [--seconds N] [--interval MS]");
             Console.WriteLine("  DeepCoolDigitalProbe usage <percent> [--seconds N] [--interval MS]");
             return 1;
@@ -43,19 +43,44 @@ namespace DeepCoolDigitalProbe
         private static int ListFanControlSensors(string[] args)
         {
             string filter = null;
+            int timeoutMilliseconds = 5000;
 
-            for (int i = 1; i + 1 < args.Length; i++)
+            for (int i = 1; i < args.Length; i++)
             {
                 if (args[i] == "--filter")
                 {
+                    if (i + 1 >= args.Length)
+                    {
+                        return Usage();
+                    }
+
                     filter = args[i + 1];
+                    i++;
                 }
+                else if (args[i] == "--timeout")
+                {
+                    if (i + 1 >= args.Length || !int.TryParse(args[i + 1], out timeoutMilliseconds))
+                    {
+                        return Usage();
+                    }
+
+                    i++;
+                }
+            }
+
+            if (timeoutMilliseconds <= 0)
+            {
+                timeoutMilliseconds = 5000;
             }
 
             try
             {
                 var client = IPCFactory.GetSensorClient();
-                GetAllSensorsReply reply = client.GetAllSensors(new GetAllSensorsRequest());
+                GetAllSensorsReply reply = client.GetAllSensors(
+                    new GetAllSensorsRequest(),
+                    null,
+                    DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds),
+                    CancellationToken.None);
 
                 int shown = 0;
 
@@ -71,7 +96,8 @@ namespace DeepCoolDigitalProbe
                         continue;
                     }
 
-                    Console.WriteLine($"[{sensor.Type}] \"{sensor.Name}\" id=\"{sensor.Identifier}\" origin=\"{sensor.Origin}\" hasValue={sensor.HasValue} value={sensor.Value}");
+                    string valueText = sensor.HasValue ? $"value={sensor.Value}" : "no value";
+                    Console.WriteLine($"[{sensor.Type}] \"{sensor.Name}\" id=\"{sensor.Identifier}\" origin=\"{sensor.Origin}\" {valueText}");
                     shown++;
                 }
 
@@ -85,7 +111,7 @@ namespace DeepCoolDigitalProbe
             }
             catch (Exception ex)
             {
-                Console.WriteLine("FanControl IPC unavailable: " + ex.Message);
+                Console.WriteLine("FanControl IPC unavailable: " + ex);
                 return 1;
             }
         }

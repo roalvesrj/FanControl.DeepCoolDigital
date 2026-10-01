@@ -6,13 +6,14 @@ namespace FanControl.DeepCoolDigital.Core
     /// Implements a simple time-based retry gate: after a failure, retries are blocked for a cooldown.
     /// </summary>
     /// <remarks>
-    /// Used to fall back from the FanControl IPC source to the local sensor source without hammering a
-    /// failing endpoint; the clock is passed in by the caller so the behavior is fully unit-testable.
+    /// The arithmetic is intentionally done in 32-bit, wrap-safe form so that the ~49.7-day
+    /// <c>Environment.TickCount</c> wraparound cannot leave the gate permanently blocked.
     /// </remarks>
     public sealed class RetryBackoff
     {
         private readonly int _retryDelayMilliseconds;
-        private long _blockedUntilMilliseconds = long.MinValue;
+        private int _blockedUntilMilliseconds;
+        private bool _hasFailure;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="RetryBackoff"/> class.
@@ -36,7 +37,7 @@ namespace FanControl.DeepCoolDigital.Core
         /// <returns><see langword="true" /> when the cooldown elapsed or no failure is recorded; otherwise, <see langword="false" />.</returns>
         public bool CanRetry(int nowMilliseconds)
         {
-            return nowMilliseconds >= _blockedUntilMilliseconds;
+            return !_hasFailure || unchecked(nowMilliseconds - _blockedUntilMilliseconds) >= 0;
         }
 
         /// <summary>
@@ -45,7 +46,8 @@ namespace FanControl.DeepCoolDigital.Core
         /// <param name="nowMilliseconds">The current time, in milliseconds.</param>
         public void ReportFailure(int nowMilliseconds)
         {
-            _blockedUntilMilliseconds = (long)nowMilliseconds + _retryDelayMilliseconds;
+            _blockedUntilMilliseconds = unchecked(nowMilliseconds + _retryDelayMilliseconds);
+            _hasFailure = true;
         }
 
         /// <summary>
@@ -53,7 +55,7 @@ namespace FanControl.DeepCoolDigital.Core
         /// </summary>
         public void ReportSuccess()
         {
-            _blockedUntilMilliseconds = long.MinValue;
+            _hasFailure = false;
         }
     }
 }

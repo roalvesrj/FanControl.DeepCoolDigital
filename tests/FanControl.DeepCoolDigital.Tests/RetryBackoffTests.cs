@@ -59,6 +59,18 @@ namespace FanControl.DeepCoolDigital.Tests
         }
 
         [Test]
+        public void CanRetry_TickCountWraparound_StillExpires()
+        {
+            var backoff = new RetryBackoff(5000);
+            int beforeWrap = int.MaxValue - 1000;
+
+            backoff.ReportFailure(beforeWrap);
+
+            Assert.That(backoff.CanRetry(beforeWrap + 4999), Is.False);
+            Assert.That(backoff.CanRetry(beforeWrap + 5000), Is.True);
+        }
+
+        [Test]
         public void Constructor_NegativeDelay_ThrowsArgumentOutOfRangeException()
         {
             Assert.Throws<ArgumentOutOfRangeException>(() => new RetryBackoff(-1));
