@@ -71,7 +71,7 @@ Every task follows these six stages. No stage may be skipped; a stage may be lig
 
 ### 4.5 Auto code review (mandatory)
 
-- Before any merge, release, or public claim about a change, dispatch an **independent reviewer subagent** using the `requesting-code-review` skill over the git range.
+- Before **handing any change to the owner for validation**, and before any merge, release, or public claim about a change, dispatch an **independent reviewer subagent** using the `requesting-code-review` skill over the git range. Un-reviewed work is never pushed for validation (the v0.3.1 incident: a fix was handed over un-reviewed and contained a real bug).
 - Add the pertinent skill perspectives (section 5) — `csharp-docs`, `csharp-nunit`, `dotnet-best-practices`, `security-and-hardening` — and require each one to argue from its own lens.
 - **The perspectives must "discuss":** confront the reviewers' findings against each other, against the code, and against the evidence; reconcile conflicts explicitly (a finding valid under one lens may be invalid under another).
 - Reach a **common denominator** and present it to the owner — **the owner always decides** what is accepted, deferred or rejected.
