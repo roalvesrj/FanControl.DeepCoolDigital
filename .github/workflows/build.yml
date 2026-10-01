@@ -41,6 +41,7 @@ jobs:
             Write-Error "Probe failed to load the IPC types (missing dependency?): $output"
             exit 1
           }
+          exit 0
 
       - name: Upload plugin artifacts
         uses: actions/upload-artifact@v4
