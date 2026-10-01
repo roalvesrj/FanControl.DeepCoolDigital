@@ -19,7 +19,7 @@ namespace FanControl.DeepCoolDigital
     /// </remarks>
     internal sealed class FanControlIpcSource : ISensorSource, IDisposable
     {
-        private const int ReadTimeoutMilliseconds = 500;
+        private const int ReadTimeoutMilliseconds = 150;
 
         private readonly IReadOnlyList<string> _preferredTemperatureNames;
         private readonly string _preferredUsageSensor;
@@ -67,35 +67,24 @@ namespace FanControl.DeepCoolDigital
                     }
                 }
 
-                bool temperatureFound = false;
-                bool usageFound = false;
+                var samples = new List<SensorSample>(reply.Sensors.Count);
 
                 foreach (SensorMessage sensor in reply.Sensors)
                 {
-                    if (!sensor.HasValue)
+                    if (sensor.HasValue)
                     {
-                        continue;
-                    }
-
-                    if (!temperatureFound && string.Equals(sensor.Identifier, _temperatureIdentifier, StringComparison.Ordinal))
-                    {
-                        temperatureCelsius = sensor.Value;
-                        temperatureFound = true;
-                    }
-                    else if (!usageFound && string.Equals(sensor.Identifier, _usageIdentifier, StringComparison.Ordinal))
-                    {
-                        usage = sensor.Value;
-                        usageFound = true;
-                    }
-
-                    if (temperatureFound && usageFound)
-                    {
-                        return true;
+                        samples.Add(new SensorSample(sensor.Name, sensor.Value, sensor.Identifier));
                     }
                 }
 
-                ResetDiscovery();
-                return false;
+                if (!SensorLookup.TryGetValue(samples, _temperatureIdentifier, out temperatureCelsius)
+                    || !SensorLookup.TryGetValue(samples, _usageIdentifier, out usage))
+                {
+                    ResetDiscovery();
+                    return false;
+                }
+
+                return true;
             }
             catch (Exception ex)
             {
@@ -103,14 +92,6 @@ namespace FanControl.DeepCoolDigital
                 ResetClient();
                 return false;
             }
-        }
-
-        /// <summary>
-        /// Drops the client and the discovered sensor identifiers, forcing a reconnect on the next read.
-        /// </summary>
-        public void Reset()
-        {
-            ResetClient();
         }
 
         /// <inheritdoc />

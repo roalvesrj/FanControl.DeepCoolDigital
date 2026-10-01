@@ -23,6 +23,7 @@ namespace FanControl.DeepCoolDigital.Core
         private readonly Action _retireFallback;
         private string _lastDescription;
         private int _primarySuccessStreak;
+        private bool _fallbackActive;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SensorSourceManager"/> class.
@@ -54,6 +55,7 @@ namespace FanControl.DeepCoolDigital.Core
             _logEvent = logEvent ?? throw new ArgumentNullException(nameof(logEvent));
             _logSource = logSource ?? throw new ArgumentNullException(nameof(logSource));
             _retireFallback = retireFallback;
+            _fallbackActive = fallback != null;
         }
 
         /// <summary>
@@ -124,6 +126,7 @@ namespace FanControl.DeepCoolDigital.Core
             {
                 if (_fallback.TryRead(out temperatureCelsius, out usage))
                 {
+                    _fallbackActive = true;
                     LogSource("local (LibreHardwareMonitor + kernel)");
                     return true;
                 }
@@ -138,7 +141,7 @@ namespace FanControl.DeepCoolDigital.Core
 
         private void RetireFallbackWhenIdle()
         {
-            if (_retireFallback == null || _retireFallbackAfterSuccesses <= 0)
+            if (_retireFallback == null || _retireFallbackAfterSuccesses <= 0 || !_fallbackActive)
             {
                 return;
             }
@@ -146,6 +149,7 @@ namespace FanControl.DeepCoolDigital.Core
             if (_primarySuccessStreak >= _retireFallbackAfterSuccesses)
             {
                 _primarySuccessStreak = 0;
+                _fallbackActive = false;
                 _retireFallback();
             }
         }

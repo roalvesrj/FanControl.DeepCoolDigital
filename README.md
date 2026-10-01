@@ -32,8 +32,8 @@ The display can be configured to show:
 
 - Reads CPU temperature and usage **from FanControl's own sensors over its IPC channel** when available — while the channel is healthy there is no second LibreHardwareMonitor instance, no extra driver and no extra service. Falls back automatically to a local LibreHardwareMonitor instance and Windows kernel counters when the channel is unavailable, and releases that fallback again once the IPC has been healthy for ~30 seconds.
 - Registers a **`DeepCool Display CPU Temp`** sensor inside FanControl, usable in any fan curve.
-- **Multiple displays at once**: every supported DeepCool DIGITAL cooler found on the system is driven independently, with optional per-device settings.
-- High-temperature alert on the cooler, matching DeepCool Hub ("exceeds 90 °C" by default), toggleable per device.
+- **Multiple displays at once**: every supported display identity found on the system is driven independently (one session per USB identity — two identical coolers share a session), with optional per-device settings.
+- High-temperature alert on the cooler, matching DeepCool Hub's behavior (at or above 90 °C by default), toggleable per device.
 - Values beyond what a display can render are clamped to all-nines (e.g. `99` on the AG), exactly like DeepCool Hub does.
 - Fahrenheit support on device families that accept it (e.g. the AK series).
 - **Hot-reload configuration**: edit the ini file and the change is applied in about a second — no FanControl restart.
@@ -226,7 +226,7 @@ dotnet build -c Release
 
 Plugin output: `src\FanControl.DeepCoolDigital\bin\Release\FanControl.DeepCoolDigital.dll` + `FanControl.DeepCoolDigital.Core.dll` + `DeepCoolDigital.ini`. Run the tests with `dotnet test`.
 
-The `lib\` folder contains the **unmodified reference assemblies** shipped with the FanControl V281 release archive (`FanControl.Plugins.dll`, `HidSharp.dll`, `LibreHardwareMonitorLib.dll` + XML docs). They are used only for compilation; at runtime the plugin binds to FanControl's own copies, and nothing from `lib\` is redistributed in the plugin output.
+The `lib\` folder contains the **unmodified reference assemblies** shipped with the FanControl V281 release archive: `FanControl.Plugins.dll`, `HidSharp.dll`, `LibreHardwareMonitorLib.dll`, `FanControl.IPC.dll`, `Grpc.Core.Api.dll`, `GrpcDotNetNamedPipes.dll`, `Google.Protobuf.dll` and the `System.*` dependencies of the standalone probe (plus XML docs). They are used only for compilation; at runtime the plugin binds to FanControl's own copies, and nothing from `lib\` is redistributed in the plugin output.
 
 ## Project structure
 

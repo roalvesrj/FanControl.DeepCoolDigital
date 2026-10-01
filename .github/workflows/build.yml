@@ -14,6 +14,8 @@ jobs:
   build-and-test:
     name: Build and test
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,8 +39,12 @@ jobs:
         run: |
           $output = & .\tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe sensors --timeout 250 2>&1 | Out-String
           Write-Host $output
-          if ($output -match 'initializer|inicializador') {
-            Write-Error "Probe failed to load the IPC types (missing dependency?): $output"
+          if ($output -match 'Could not load file or assembly|FileLoadException|TypeLoadException|FileNotFoundException|initializer|inicializador') {
+            Write-Error "Probe failed to load its dependencies: $output"
+            exit 1
+          }
+          if ($output -notmatch 'unavailable|Access denied|acesso negado') {
+            Write-Error "Probe did not fail gracefully: $output"
             exit 1
           }
           exit 0

@@ -82,6 +82,15 @@ namespace FanControl.DeepCoolDigital.Tests
         }
 
         [Test]
+        public void Load_OutOfRangeUsbIds_FallBackToDefaults()
+        {
+            PluginConfig config = LoadWith("vendorId=0x10000\nproductId=-1");
+
+            Assert.That(config.VendorId, Is.EqualTo(0x3633));
+            Assert.That(config.ProductId, Is.EqualTo(0x0008));
+        }
+
+        [Test]
         public void Load_ValidFile_ParsesAllValues()
         {
             PluginConfig config = LoadWith("mode=dynamic\nautoSwitchSeconds=10\nalarmTemperature=85\n");
