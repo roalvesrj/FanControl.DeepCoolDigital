@@ -41,7 +41,65 @@ Working rules for AI agents (and human contributors) in this repository. Follow 
 - **Never post a public comment** (issue, PR, release note, discussion) without first presenting the draft to the repository owner and receiving explicit approval.
 - Upstream replies are in English and must be factual; acknowledge mistakes plainly.
 
-## 4. Commands
+## 4. Mandatory workflow
+
+Every task follows these six stages. No stage may be skipped; a stage may be lightweight when the context is trivial, but it must be consciously acknowledged.
+
+### 4.1 Understand
+
+- Restate the goal, the constraints and the acceptance criteria in your own words.
+- Check `docs/SPEC.md` (which wave/item) and this file; confirm scope with the owner whenever anything is ambiguous.
+- Define upfront what evidence will prove success.
+
+### 4.2 Investigate
+
+- Read the exact code path involved; never rely on names, assumptions or neighboring code.
+- Reproduce the behavior first: probe run, log capture, test, or live evidence.
+- Identify the root cause. If it is still unknown, say so explicitly and list the missing evidence instead of guessing.
+
+### 4.3 Implement
+
+- Make the smallest change that fits the architecture (registry + capabilities + protocol classes; policy logic in Core, unit-tested).
+- Follow the skill standards that apply (section 5). All artifacts in English.
+- Keep public behavior backward compatible unless the owner approved a change.
+
+### 4.4 Validate
+
+- `dotnet build -c Release` and the full NUnit suite must be green.
+- Exercise the **exact production path end-to-end** (probe, deployed plugin, real log) — a neighboring API or "it compiles" is not validation.
+- Hardware-facing changes are validated by the owner on real hardware before any merge.
+
+### 4.5 Auto code review (mandatory)
+
+- Before any merge, release, or public claim about a change, dispatch an **independent reviewer subagent** using the `requesting-code-review` skill over the git range.
+- Add the pertinent skill perspectives (section 5) — `csharp-docs`, `csharp-nunit`, `dotnet-best-practices`, `security-and-hardening` — and require each one to argue from its own lens.
+- **The perspectives must "discuss":** confront the reviewers' findings against each other, against the code, and against the evidence; reconcile conflicts explicitly (a finding valid under one lens may be invalid under another).
+- Reach a **common denominator** and present it to the owner — **the owner always decides** what is accepted, deferred or rejected.
+- Fix every Critical/Important finding before proceeding; track Minor findings for later.
+- Record the review outcome (strengths, issues, decisions) in the task summary.
+
+### 4.6 Deliver
+
+- Follow the publication pattern (section 9).
+- Update `docs/SPEC.md` status (local) and keep README/AGENTS consistent with what actually shipped.
+
+## 5. Skills: which one, when
+
+The context is the soul: choose skills by the situation, not by a rigid table. This mapping is guidance, not stone — combine and skip as the task demands.
+
+- Any C# code change → `dotnet-best-practices`
+- Public/internal API surface, XML docs → `csharp-docs`
+- Tests → `csharp-nunit`
+- Before merge/release/major claim → `requesting-code-review` (independent reviewer, workflow 4.5)
+- Code touching external input, IPC, file parsing, dependencies or trust boundaries → `security-and-hardening` (desktop-scope adaptation)
+- Unsure which skill fits, or a capability is missing → `find-skills`
+- Editing opencode's own configuration → `customize-opencode`
+- Web-security skills (`security-best-practices`, `security-requirement-extraction`) and `solidity-security` → not applicable to this repository today; revisit only if the context changes
+- `frontend-design` → not applicable (this repository has no UI)
+
+Examples of context-driven combinations: a new config parser = `dotnet-best-practices` + `security-and-hardening` + `csharp-nunit`; a protocol addition = `dotnet-best-practices` + `csharp-docs` + `csharp-nunit` + `requesting-code-review`. When skills disagree, workflow 4.5 reconciliation applies.
+
+## 6. Commands
 
 ```powershell
 # Build everything
@@ -60,7 +118,7 @@ tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe usage 37 --secon
 - Deploy locally: close FanControl, copy `FanControl.DeepCoolDigital.dll`, `FanControl.DeepCoolDigital.Core.dll` and `DeepCoolDigital.ini` into `<FanControl>\Plugins\`, restart FanControl.
 - CI (`.github/workflows/build.yml`): build + tests + probe smoke on every push (main/develop) and pull request.
 
-## 5. Restrictions
+## 7. Restrictions
 
 - **Never push to `main` directly.** All work happens on `develop`; `main` only receives `--no-ff` merge commits after owner validation and code review.
 - **Never push, tag, or create releases unless the owner explicitly asks.**
@@ -70,19 +128,19 @@ tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe usage 37 --secon
 - `docs/` is intentionally gitignored; never commit it.
 - Never commit secrets, tokens or machine-specific paths.
 
-## 6. Accumulated lessons
+## 8. Accumulated lessons
 
 - **`ReadSensorValues` (v0.3.0 incident).** The FanControl.IPC proto declares `ReadSensorValues`, and FanControl V281 answers it with `Unimplemented`. Probes had validated `GetAllSensors` only, while the plugin's production read path used `ReadSensorValues` and silently fell back to the local source — the log showed a 30-second reconnect loop that nobody noticed, and the upstream maintainer caught the mistake publicly. **Lesson: validate the exact production code path end-to-end, not just a neighboring API; read the logs of the real deployed artifact.**
-- **Code review with the skills is mandatory before any merge or release.** The v0.3.1 fix skipped the review and that is not acceptable.
+- **Code review is a mandatory stage, not an optional courtesy.** The v0.3.1 fix skipped it once; workflow 4.5 exists because of that. No merge or release without it.
 - **Probe dependency pitfall.** Standalone tools must reference FanControl's exact dependency set (e.g. `System.Memory` 4.0.5.0 from the release archive with auto binding redirects); NuGet versions mismatch the proto-generated bindings and fail with `TypeInitializationException`/`FileLoadException`.
 - **`Environment.TickCount` wraps** (~49.7 days); retry/backoff arithmetic must be wrap-safe (32-bit unchecked) and tested.
 - **Plugin sensors are namespaced by FanControl** (e.g. `DeepCool DIGITAL Display/DeepCoolDigital/CpuTemperature`); keep sensor ids stable so user curves survive upgrades.
 
-## 7. Publication pattern
+## 9. Publication pattern
 
-1. Work on `develop`; CI green (build + 179+ tests + probe smoke).
+1. Work on `develop`; CI green (build + full test suite + probe smoke).
 2. Local validation by the owner: deploy the develop build (3 files, FanControl closed), test on real hardware, check `DeepCoolDigital.log`.
-3. **Mandatory code review using the skills** (`requesting-code-review`, `csharp-docs`, `csharp-nunit`, `dotnet-best-practices`): dispatch an independent reviewer subagent over the git range; fix Critical/Important findings before proceeding.
+3. Workflow 4.5 auto code review completed, with Critical/Important findings fixed and the common denominator presented to the owner.
 4. Merge `develop` → `main` with `--no-ff`; push `main`.
 5. Tag `vX.Y.Z`; create the GitHub release with the plugin zip + probe zip and English release notes.
 6. Public communication (community submission, upstream replies): draft → owner approval → post.
