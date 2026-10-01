@@ -5,7 +5,7 @@
     <LangVersion>latest</LangVersion>
     <AssemblyName>FanControl.DeepCoolDigital</AssemblyName>
     <RootNamespace>FanControl.DeepCoolDigital</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
@@ -26,6 +26,22 @@
     </Reference>
     <Reference Include="LibreHardwareMonitorLib">
       <HintPath>..\..\lib\LibreHardwareMonitorLib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="FanControl.IPC">
+      <HintPath>..\..\lib\FanControl.IPC.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Grpc.Core.Api">
+      <HintPath>..\..\lib\Grpc.Core.Api.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GrpcDotNetNamedPipes">
+      <HintPath>..\..\lib\GrpcDotNetNamedPipes.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Google.Protobuf">
+      <HintPath>..\..\lib\Google.Protobuf.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

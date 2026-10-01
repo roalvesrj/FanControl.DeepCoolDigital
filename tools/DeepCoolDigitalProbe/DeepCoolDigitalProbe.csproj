@@ -15,6 +15,22 @@
       <HintPath>..\..\lib\HidSharp.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="FanControl.IPC">
+      <HintPath>..\..\lib\FanControl.IPC.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Grpc.Core.Api">
+      <HintPath>..\..\lib\Grpc.Core.Api.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="GrpcDotNetNamedPipes">
+      <HintPath>..\..\lib\GrpcDotNetNamedPipes.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Google.Protobuf">
+      <HintPath>..\..\lib\Google.Protobuf.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>

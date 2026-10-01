@@ -155,6 +155,55 @@ namespace FanControl.DeepCoolDigital.Tests
         }
 
         [Test]
+        public void Load_Defaults_UseAutoSourceAndCpuTotalUsageSensor()
+        {
+            PluginConfig config = PluginConfig.Load(_path);
+
+            Assert.That(config.Source, Is.EqualTo(SensorSource.Auto));
+            Assert.That(config.UsageSensor, Is.EqualTo("CPU Total"));
+        }
+
+        [TestCase("auto", SensorSource.Auto)]
+        [TestCase("fancontrol", SensorSource.FanControl)]
+        [TestCase("ipc", SensorSource.FanControl)]
+        [TestCase("local", SensorSource.Local)]
+        [TestCase("lhm", SensorSource.Local)]
+        public void Load_SensorSourceValue_MapsToExpectedSource(string value, SensorSource expected)
+        {
+            PluginConfig config = LoadWith($"sensorSource={value}");
+
+            Assert.That(config.Source, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Load_InvalidSensorSource_FallsBackToAuto()
+        {
+            PluginConfig config = LoadWith("sensorSource=banana");
+
+            Assert.That(config.Source, Is.EqualTo(SensorSource.Auto));
+        }
+
+        [Test]
+        public void Load_UsageSensor_ParsesValue()
+        {
+            PluginConfig config = LoadWith("usageSensor=CPU Core Max");
+
+            Assert.That(config.UsageSensor, Is.EqualTo("CPU Core Max"));
+        }
+
+        [Test]
+        public void TryReload_SensorSourceChange_IsReportedAndApplied()
+        {
+            PluginConfig config = LoadWith("sensorSource=auto");
+
+            File.WriteAllText(_path, "sensorSource=local");
+            File.SetLastWriteTimeUtc(_path, DateTime.UtcNow.AddSeconds(10));
+
+            Assert.That(config.TryReload(), Is.True);
+            Assert.That(config.Source, Is.EqualTo(SensorSource.Local));
+        }
+
+        [Test]
         public void ForDevice_NoOverride_ReturnsGlobals()
         {
             PluginConfig config = LoadWith("mode=usage\nalarmEnabled=false");

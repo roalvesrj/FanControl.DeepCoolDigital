@@ -91,6 +91,18 @@ namespace FanControl.DeepCoolDigital.Core
         public bool Fahrenheit { get; private set; }
 
         /// <summary>
+        /// Gets where the CPU temperature and usage readings come from.
+        /// </summary>
+        /// <value>One of the enumeration values that specifies the sensor source. The default is <see cref="SensorSource.Auto"/>.</value>
+        public SensorSource Source { get; private set; } = SensorSource.Auto;
+
+        /// <summary>
+        /// Gets the preferred CPU usage sensor name or identifier.
+        /// </summary>
+        /// <value>The configured sensor name or identifier. The default is <see cref="UsageSensorSelector.DefaultSensorName"/>.</value>
+        public string UsageSensor { get; private set; } = UsageSensorSelector.DefaultSensorName;
+
+        /// <summary>
         /// Gets how much information the plugin writes to its log file.
         /// </summary>
         /// <value>One of the enumeration values that specifies the log level. The default is <see cref="LogLevel.Off"/>.</value>
@@ -208,6 +220,20 @@ namespace FanControl.DeepCoolDigital.Core
                         case "fahrenheit":
                             config.Fahrenheit = ParseBool(value, config.Fahrenheit);
                             break;
+                        case "sensorsource":
+                            if (TryParseSensorSource(value, out SensorSource source))
+                            {
+                                config.Source = source;
+                            }
+
+                            break;
+                        case "usagesensor":
+                            if (!string.IsNullOrWhiteSpace(value))
+                            {
+                                config.UsageSensor = value;
+                            }
+
+                            break;
                         case "vendorid":
                             config.VendorId = ParseInt(value, config.VendorId);
                             break;
@@ -310,6 +336,8 @@ namespace FanControl.DeepCoolDigital.Core
                     reloaded.AlarmTemperature != AlarmTemperature ||
                     reloaded.AlarmEnabled != AlarmEnabled ||
                     reloaded.Fahrenheit != Fahrenheit ||
+                    reloaded.Source != Source ||
+                    !string.Equals(reloaded.UsageSensor, UsageSensor, StringComparison.OrdinalIgnoreCase) ||
                     reloaded.VendorId != VendorId ||
                     reloaded.ProductId != ProductId ||
                     reloaded.LogLevel != LogLevel ||
@@ -428,6 +456,8 @@ namespace FanControl.DeepCoolDigital.Core
             AlarmTemperature = other.AlarmTemperature;
             AlarmEnabled = other.AlarmEnabled;
             Fahrenheit = other.Fahrenheit;
+            Source = other.Source;
+            UsageSensor = other.UsageSensor;
             VendorId = other.VendorId;
             ProductId = other.ProductId;
             LogLevel = other.LogLevel;
@@ -493,6 +523,29 @@ namespace FanControl.DeepCoolDigital.Core
                     return true;
                 default:
                     level = default;
+                    return false;
+            }
+        }
+
+        private static bool TryParseSensorSource(string value, out SensorSource source)
+        {
+            switch (value.ToLowerInvariant())
+            {
+                case "auto":
+                    source = SensorSource.Auto;
+                    return true;
+                case "fancontrol":
+                case "ipc":
+                case "fan":
+                    source = SensorSource.FanControl;
+                    return true;
+                case "local":
+                case "lhm":
+                case "kernel":
+                    source = SensorSource.Local;
+                    return true;
+                default:
+                    source = default;
                     return false;
             }
         }
