@@ -32,7 +32,7 @@ The display can be configured to show:
 
 - Reads CPU temperature and usage **from FanControl's own sensors over its IPC channel** when available — while the channel is healthy there is no second LibreHardwareMonitor instance, no extra driver and no extra service. Falls back automatically to a local LibreHardwareMonitor instance and Windows kernel counters when the channel is unavailable, and releases that fallback again once the IPC has been healthy for ~30 seconds.
 - Registers a **`DeepCool Display CPU Temp`** sensor inside FanControl, usable in any fan curve.
-- **Multiple displays at once**: every supported display identity found on the system is driven independently (one session per USB identity — two identical coolers share a session), with optional per-device settings.
+- **Multiple displays at once**: every supported display identity found on the system is driven independently (one session per USB identity; only the first unit of each identity is driven), with optional per-device settings.
 - High-temperature alert on the cooler, matching DeepCool Hub's behavior (at or above 90 °C by default), toggleable per device.
 - Values beyond what a display can render are clamped to all-nines (e.g. `99` on the AG), exactly like DeepCool Hub does.
 - Fahrenheit support on device families that accept it (e.g. the AK series).
@@ -202,12 +202,12 @@ A standalone CLI that writes directly to the display, no FanControl required. Gr
 
 ```text
 DeepCoolDigitalProbe list
-DeepCoolDigitalProbe sensors [--filter TEXT]
+DeepCoolDigitalProbe sensors [--filter TEXT] [--timeout MS]
 DeepCoolDigitalProbe temp  42 --seconds 10
 DeepCoolDigitalProbe usage 37 --seconds 10
 ```
 
-Options: `--seconds N` (duration, default 10) and `--interval MS` (write interval, default 1000). The `sensors` command lists FanControl's sensors over IPC — useful to pick `preferredTempSensors` / `usageSensor` values — and must run from an elevated prompt when FanControl runs as administrator.
+Options: `--seconds N` (duration, default 10), `--interval MS` (write interval, default 1000), `--filter TEXT` and `--timeout MS` (sensor listing filter and deadline, default 5000). The `sensors` command lists FanControl's sensors over IPC — useful to pick `preferredTempSensors` / `usageSensor` values — and must run from an elevated prompt when FanControl runs as administrator.
 
 Build output: `tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe`.
 

@@ -88,11 +88,23 @@ namespace FanControl.DeepCoolDigital
             Write(message);
         }
 
+        /// <summary>
+        /// Logs an exception: the message at the events level, the full exception at the verbose level.
+        /// </summary>
+        /// <param name="context">A short description of what failed.</param>
+        /// <param name="exception">The exception to log.</param>
+        public static void Exception(string context, Exception exception)
+        {
+            Event(context + ": " + exception.Message);
+            Verbose(exception.ToString());
+        }
+
         private static void Write(string message)
         {
             try
             {
-                File.AppendAllText(_path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss ") + message + Environment.NewLine);
+                string sanitized = message.Replace("\r", " ").Replace("\n", " ");
+                File.AppendAllText(_path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss ") + sanitized + Environment.NewLine);
             }
             catch
             {

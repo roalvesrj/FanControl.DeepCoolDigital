@@ -12,8 +12,6 @@ namespace FanControl.DeepCoolDigital.Tests
     [Category("Providers")]
     public class SensorSourceManagerTests
     {
-        private static readonly RetryBackoff Backoff = new RetryBackoff(30000);
-
         [Test]
         public void TryRead_AutoWithHealthyPrimary_ReturnsPrimaryValues()
         {
@@ -191,6 +189,40 @@ namespace FanControl.DeepCoolDigital.Tests
             manager.TryRead(67000, out _, out _);
             manager.TryRead(68000, out _, out _);
             Assert.That(retirements, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void TryRead_RetirementDisabled_NeverInvokesCallback()
+        {
+            var primary = new FakeSource(42f, 7f, () => true);
+            var fallback = new FakeSource(55f, 9f, () => true);
+            int retirements = 0;
+            var manager = CreateManager(
+                SensorSource.Auto,
+                primary,
+                fallback,
+                retireAfterSuccesses: 0,
+                retireFallback: () => retirements++);
+
+            for (int cycle = 1; cycle <= 5; cycle++)
+            {
+                manager.TryRead(cycle * 1000, out _, out _);
+            }
+
+            Assert.That(retirements, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void TryRead_NullRetireCallback_DoesNotThrow()
+        {
+            var primary = new FakeSource(42f, 7f, () => true);
+            var fallback = new FakeSource(55f, 9f, () => true);
+            var manager = CreateManager(SensorSource.Auto, primary, fallback, retireAfterSuccesses: 1);
+
+            for (int cycle = 1; cycle <= 3; cycle++)
+            {
+                Assert.DoesNotThrow(() => manager.TryRead(cycle * 1000, out _, out _));
+            }
         }
 
         [Test]

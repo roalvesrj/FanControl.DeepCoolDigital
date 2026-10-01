@@ -10,6 +10,12 @@ namespace FanControl.DeepCoolDigital.Core
     /// The manager is deliberately free of hardware and FanControl dependencies so the fallback state
     /// machine is fully unit-testable. It also swallows exceptions thrown by the sources themselves,
     /// which covers the case where the primary source cannot even load its underlying types.
+    /// <para>
+    /// Retirement semantics: a non-null fallback starts as "active", so an eagerly created (but never
+    /// used) fallback is released after <c>retireFallbackAfterSuccesses</c> consecutive primary
+    /// successes. The callback runs once per activation; using the fallback again reactivates it and
+    /// schedules another retirement after the next run of primary successes.
+    /// </para>
     /// </remarks>
     public sealed class SensorSourceManager
     {
@@ -150,7 +156,15 @@ namespace FanControl.DeepCoolDigital.Core
             {
                 _primarySuccessStreak = 0;
                 _fallbackActive = false;
-                _retireFallback();
+
+                try
+                {
+                    _retireFallback();
+                }
+                catch (Exception ex)
+                {
+                    _logEvent("Fallback retirement failed: " + ex.Message);
+                }
             }
         }
 

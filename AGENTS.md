@@ -74,8 +74,8 @@ Every task follows these six stages. No stage may be skipped; a stage may be lig
 - Before **handing any change to the owner for validation**, and before any merge, release, or public claim about a change, dispatch an **independent reviewer subagent** using the `requesting-code-review` skill over the git range. Un-reviewed work is never pushed for validation (the v0.3.1 incident: a fix was handed over un-reviewed and contained a real bug).
 - Add the pertinent skill perspectives (section 5) — `csharp-docs`, `csharp-nunit`, `dotnet-best-practices`, `security-and-hardening` — and require each one to argue from its own lens.
 - **The perspectives must "discuss":** confront the reviewers' findings against each other, against the code, and against the evidence; reconcile conflicts explicitly (a finding valid under one lens may be invalid under another).
-- Reach a **common denominator** and present it to the owner — **the owner always decides** what is accepted, deferred or rejected.
 - Fix every Critical/Important finding before proceeding; track Minor findings for later.
+- Reach a **common denominator** and present it to the owner — **the owner always decides** what is accepted, deferred or rejected.
 - Record the review outcome (strengths, issues, decisions) in the task summary.
 
 ### 4.6 Deliver
@@ -124,7 +124,7 @@ tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe usage 37 --secon
 - **Never push, tag, or create releases unless the owner explicitly asks.**
 - Before every commit, check the branch (`git branch --show-current`) and the status (`git status -sb`); never commit to `main` by accident (this happened once — see lessons).
 - No public comments/issues/replies without prior owner approval (section 3).
-- Do not add runtime dependencies beyond what FanControl already ships (HidSharp, LibreHardwareMonitor, FanControl.IPC, Grpc.*, Google.Protobuf, BCL). Compile-time references use `Private=false` so the host assemblies are used at runtime.
+- Do not add runtime dependencies beyond what FanControl already ships (HidSharp, LibreHardwareMonitor, FanControl.IPC, Grpc.*, Google.Protobuf, BCL). In the plugin project, compile-time references use `Private=false` so the host assemblies are used at runtime (the standalone probe uses `Private=true` because it has no host).
 - `docs/` is intentionally gitignored; never commit it.
 - Never commit secrets, tokens or machine-specific paths.
 
@@ -139,9 +139,9 @@ tools\DeepCoolDigitalProbe\bin\Release\DeepCoolDigitalProbe.exe usage 37 --secon
 ## 9. Publication pattern
 
 1. Work on `develop`; CI green (build + full test suite + probe smoke).
-2. Local validation by the owner: deploy the develop build (3 files, FanControl closed), test on real hardware, check `DeepCoolDigital.log`.
-3. Workflow 4.5 auto code review completed, with Critical/Important findings fixed and the common denominator presented to the owner.
+2. Workflow 4.5 auto code review completed, with Critical/Important findings fixed and the common denominator presented to the owner.
+3. Local validation by the owner: deploy the develop build (3 files, FanControl closed), test on real hardware, check `DeepCoolDigital.log`.
 4. Merge `develop` → `main` with `--no-ff`; push `main`.
-5. Tag `vX.Y.Z`; create the GitHub release with the plugin zip + probe zip and English release notes.
+5. Tag `vX.Y.Z`; verify third-party notices/provenance of the release assets; create the GitHub release with the plugin zip + probe zip and English release notes.
 6. Public communication (community submission, upstream replies): draft → owner approval → post.
 7. Update `docs/SPEC.md` status (local).

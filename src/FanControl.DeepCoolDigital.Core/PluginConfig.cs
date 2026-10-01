@@ -439,7 +439,7 @@ namespace FanControl.DeepCoolDigital.Core
             int parsedVendor = ParseInt(parts[1].Trim(), int.MinValue);
             int parsedProduct = ParseInt(parts[2].Trim(), int.MinValue);
 
-            if (parsedVendor == int.MinValue || parsedProduct == int.MinValue)
+            if (parsedVendor < 0 || parsedVendor > 0xFFFF || parsedProduct < 0 || parsedProduct > 0xFFFF)
             {
                 return false;
             }

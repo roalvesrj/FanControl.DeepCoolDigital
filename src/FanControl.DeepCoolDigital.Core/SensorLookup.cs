@@ -7,11 +7,22 @@ namespace FanControl.DeepCoolDigital.Core
     /// Finds a sensor sample by identifier or name.
     /// </summary>
     /// <remarks>
-    /// Identifiers are matched exactly (they are opaque keys); names are matched case-insensitively
-    /// and only as a fallback, which supports sources that do not provide identifiers at all.
+    /// Identifiers are matched exactly (they are opaque keys) and are always preferred: the lookup
+    /// first scans all identifiers, then falls back to case-insensitive names, which supports sources
+    /// that do not provide identifiers at all.
     /// </remarks>
     public static class SensorLookup
     {
+        /// <summary>
+        /// Resolves the lookup key for a sample: its identifier when present, otherwise its name.
+        /// </summary>
+        /// <param name="sample">The sample whose key is resolved.</param>
+        /// <returns>The identifier when the sample provides one; otherwise, the sample name.</returns>
+        public static string ResolveKey(SensorSample sample)
+        {
+            return string.IsNullOrEmpty(sample.Identifier) ? sample.Name : sample.Identifier;
+        }
+
         /// <summary>
         /// Tries to find the value of a sensor by its identifier or name.
         /// </summary>
@@ -31,7 +42,17 @@ namespace FanControl.DeepCoolDigital.Core
             {
                 foreach (SensorSample sample in samples)
                 {
-                    if (Matches(sample, nameOrIdentifier))
+                    if (!string.IsNullOrEmpty(sample.Identifier)
+                        && string.Equals(sample.Identifier, nameOrIdentifier, StringComparison.Ordinal))
+                    {
+                        value = sample.Value;
+                        return true;
+                    }
+                }
+
+                foreach (SensorSample sample in samples)
+                {
+                    if (string.Equals(sample.Name, nameOrIdentifier, StringComparison.OrdinalIgnoreCase))
                     {
                         value = sample.Value;
                         return true;
@@ -41,28 +62,6 @@ namespace FanControl.DeepCoolDigital.Core
 
             value = 0f;
             return false;
-        }
-
-        /// <summary>
-        /// Determines whether a sample matches an identifier or name.
-        /// </summary>
-        /// <param name="sample">The sample to test.</param>
-        /// <param name="nameOrIdentifier">The identifier or name to look for.</param>
-        /// <returns><see langword="true" /> when the sample matches; otherwise, <see langword="false" />.</returns>
-        public static bool Matches(SensorSample sample, string nameOrIdentifier)
-        {
-            if (string.IsNullOrEmpty(nameOrIdentifier))
-            {
-                return false;
-            }
-
-            if (!string.IsNullOrEmpty(sample.Identifier)
-                && string.Equals(sample.Identifier, nameOrIdentifier, StringComparison.Ordinal))
-            {
-                return true;
-            }
-
-            return string.Equals(sample.Name, nameOrIdentifier, StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using FanControl.DeepCoolDigital.Core;
 using NUnit.Framework;
 
@@ -58,6 +57,20 @@ namespace FanControl.DeepCoolDigital.Tests
         }
 
         [Test]
+        public void TryGetValue_IdentifierAndNameMatch_IdentifierWins()
+        {
+            var samples = new[]
+            {
+                new SensorSample("CPU Total", 1f),
+                new SensorSample("Other", 99f, "/amdcpu/0/load/0")
+            };
+
+            SensorLookup.TryGetValue(samples, "/amdcpu/0/load/0", out float value);
+
+            Assert.That(value, Is.EqualTo(99f));
+        }
+
+        [Test]
         public void TryGetValue_MissingSensor_ReturnsFalse()
         {
             var samples = new[] { new SensorSample("CPU Total", 12f, "/amdcpu/0/load/0") };
@@ -66,13 +79,13 @@ namespace FanControl.DeepCoolDigital.Tests
             Assert.That(value, Is.EqualTo(0f));
         }
 
-        [Test]
-        public void TryGetValue_EmptyNameOrIdentifier_ReturnsFalse()
+        [TestCase(null)]
+        [TestCase("")]
+        public void TryGetValue_EmptyNameOrIdentifier_ReturnsFalse(string nameOrIdentifier)
         {
             var samples = new[] { new SensorSample("CPU Total", 12f) };
 
-            Assert.That(SensorLookup.TryGetValue(samples, null, out _), Is.False);
-            Assert.That(SensorLookup.TryGetValue(samples, string.Empty, out _), Is.False);
+            Assert.That(SensorLookup.TryGetValue(samples, nameOrIdentifier, out _), Is.False);
         }
 
         [Test]
@@ -84,8 +97,9 @@ namespace FanControl.DeepCoolDigital.Tests
                 new SensorSample("CPU Total Copy", 99f, "/amdcpu/0/load/0")
             };
 
-            SensorLookup.TryGetValue(samples, "/amdcpu/0/load/0", out float value);
+            bool found = SensorLookup.TryGetValue(samples, "/amdcpu/0/load/0", out float value);
 
+            Assert.That(found, Is.True);
             Assert.That(value, Is.EqualTo(12f));
         }
 
@@ -93,6 +107,16 @@ namespace FanControl.DeepCoolDigital.Tests
         public void TryGetValue_NullSamples_ThrowsArgumentNullException()
         {
             Assert.Throws<ArgumentNullException>(() => SensorLookup.TryGetValue(null, "CPU Total", out _));
+        }
+
+        [TestCase("Core (Tctl/Tdie)", "/amdcpu/0/temperature/2", "/amdcpu/0/temperature/2")]
+        [TestCase("CPU Total", "", "CPU Total")]
+        [TestCase("CPU Total", null, "CPU Total")]
+        public void ResolveKey_UsesIdentifierWhenPresentOtherwiseName(string name, string identifier, string expected)
+        {
+            string key = SensorLookup.ResolveKey(new SensorSample(name, 1f, identifier));
+
+            Assert.That(key, Is.EqualTo(expected));
         }
     }
 }
