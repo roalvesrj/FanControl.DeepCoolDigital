@@ -87,7 +87,9 @@ namespace FanControl.DeepCoolDigital
                 }
 
                 if (!SensorLookup.TryGetValue(samples, _temperatureIdentifier, out temperatureCelsius)
-                    || !SensorLookup.TryGetValue(samples, _usageIdentifier, out usage))
+                    || !SensorLookup.TryGetValue(samples, _usageIdentifier, out usage)
+                    || !SensorValueValidator.IsPlausibleTemperature(temperatureCelsius)
+                    || !SensorValueValidator.IsPlausibleUsage(usage))
                 {
                     ResetDiscovery();
                     return false;
